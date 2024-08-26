@@ -1,20 +1,34 @@
+"""Popups for the GUI."""
+
+from __future__ import annotations
+
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
+    QButtonGroup,
+    QGridLayout,
     QLabel,
     QLineEdit,
-    QGridLayout,
-    QRadioButton,
-    QButtonGroup,
     QMessageBox,
+    QRadioButton,
 )
-from PyQt5.QtCore import Qt, QTimer
-from typing import List, Any
+
 
 class UserPopups:
-    """
-    Creates popup boxes for user display
-    """
+    """Creates popup boxes for user display."""
 
-    def create_text_box(self, name: str, text: str) -> Any:
+    def create_text_box(self, name: str, text: str) -> tuple[QGridLayout, QLineEdit]:
+        """Create a text box.
+
+        Args:
+        ----
+            name (str): The name of the text box.
+            text (str): The text to display in the text box.
+
+        Returns:
+        -------
+            tuple[QGridLayout, QLineEdit]: The text box.
+
+        """
         form = QGridLayout()
         form.setColumnStretch(0, 0)
 
@@ -28,18 +42,29 @@ class UserPopups:
         return form, line
 
     def create_binary_box(
-        self, name: str, labels_list: List[str], condition: bool
-    ) -> Any:
+        self,
+        name: str,
+        labels_list: list[str],
+    ) -> tuple[QGridLayout, QRadioButton]:
+        """Create a binary box.
+
+        Args:
+        ----
+            name (str): The name of the binary box.
+            labels_list (list[str]): The labels of the binary box.
+
+        Returns:
+        -------
+            tuple[QGridLayout, QRadioButton]: The binary box.
+
+        """
         form = QGridLayout()
         form.setColumnStretch(1, 0)
         label = QLabel(name)
         form.addWidget(label)
         true_event = QRadioButton(labels_list[0])
         false_event = QRadioButton(labels_list[1])
-        if condition:
-            true_event.setChecked(True)
-        else:
-            false_event.setChecked(True)
+        true_event.setChecked(True)
 
         button = QButtonGroup(parent=form)
         button.setExclusive(True)
@@ -49,7 +74,15 @@ class UserPopups:
         form.addWidget(false_event, 0, 0, Qt.AlignRight)
         return form, true_event
 
-    def show_warning(self, text: str, title: str):
+    def show_warning(self, text: str, title: str) -> None:
+        """Show a warning.
+
+        Args:
+        ----
+            text (str): The text to display in the warning.
+            title (str): The title of the warning.
+
+        """
         msg = QMessageBox()
         msg.setText(title)
         msg.setWindowTitle("Alert")
@@ -58,7 +91,21 @@ class UserPopups:
         msg.addButton(QMessageBox.Ok)
         msg.exec_()
 
-    def show_timed_warning(self, text: str, timeout: int, title: str = "Warning"):
+    def show_timed_warning(
+        self,
+        text: str,
+        timeout: int,
+        title: str = "Warning",
+    ) -> None:
+        """Show a timed warning.
+
+        Args:
+        ----
+            text (str): The text to display in the warning.
+            timeout (int): The timeout of the warning.
+            title (str): The title of the warning.
+
+        """
         msg = QMessageBox()
         QTimer.singleShot(timeout * 1000, lambda: msg.done(0))
         msg.setText(title)

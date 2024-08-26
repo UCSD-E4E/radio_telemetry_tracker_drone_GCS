@@ -1,15 +1,20 @@
+"""Module for the MAVModel class."""
+
+from __future__ import annotations
+
+import asyncio
 import logging
-import threading
-import copy
-from .enums import Events, SDRInitStates, ExtsStates, OutputDirStates, RTTStates
+from typing import Any, Callable
+
 import rttDroneComms.comms
-from rttDroneGCS.ping import RTTPing, DataManager
+
+from rttDroneGCS.ping import DataManager, RTTPing
+
+from .enums import Events, ExtsStates, OutputDirStates, RTTStates, SDRInitStates
 
 
 class MAVModel:
-    """
-    RTT Drone Payload Model - This class provides an object-oriented view of the vehicle state
-    """
+    """Provides an object-oriented view of the vehicle state."""
 
     BASE_OPTIONS = 0x00
     EXP_OPTIONS = 0x01
@@ -20,33 +25,31 @@ class MAVModel:
     CACHE_INVALID = 1
     CACHE_DIRTY = 2
 
-    __base_option_keywords = ["SDR_center_freq", "SDR_sampling_freq", "SDR_gain"]
-    __exp_option_keywords = [
-        "DSP_ping_width",
-        "DSP_ping_snr",
-        "DSP_ping_max",
-        "DSP_ping_min",
-        "SYS_output_dir",
-    ]
-    __eng_option_keywords = ["GPS_mode", "GPS_baud", "GPS_device", "SYS_autostart"]
+    def __init__(self, receiver: rttDroneComms.comms.gcsComms) -> None:
+        """Initialize a new MAVModel.
 
-    def __init__(self, receiver: rttDroneComms.comms.gcsComms):
-        """
-        Creates a new MAVModel
         Args:
-            receiver: gcsComms Object
-        """
-        self.__log = logging.getLogger("rttDroneGCS:MavModel")
-        self.__rx = receiver
+        ----
+            receiver (rttDroneComms.comms.gcsComms): gcsComms Object
 
+        """
+        self._log = logging.getLogger("rttDroneGCS:MavModel")
+        self._rx = receiver
         self._option_cache_dirty = {
             self.BASE_OPTIONS: self.CACHE_INVALID,
             self.EXP_OPTIONS: self.CACHE_INVALID,
             self.ENG_OPTIONS: self.CACHE_INVALID,
             self.TGT_PARAMS: self.CACHE_INVALID,
         }
+        self.state = self._initialize_state()
+        self.pp_options = self._initialize_pp_options()
+        self.est_mgr = DataManager()
+        self._callbacks = {event: [] for event in Events}
+        self._ack_vectors = {}
+        self._register_rx_callbacks()
 
-        self.state = {
+    def _initialize_state(self) -> dict:
+        return {
             "STS_sdr_status": 0,
             "STS_dir_status": 0,
             "STS_gps_status": 0,
@@ -58,7 +61,8 @@ class MAVModel:
             "CONE_track": {},
         }
 
-        self.pp_options = {
+    def _initialize_pp_options(self) -> dict:
+        return {
             "TGT_frequencies": [],
             "SDR_center_freq": 0,
             "SDR_sampling_freq": 0,
@@ -74,242 +78,279 @@ class MAVModel:
             "SYS_autostart": False,
         }
 
-        self.est_mgr = DataManager()
+    def _register_rx_callbacks(self) -> None:
+        callback_mapping = {
+            rttDroneComms.comms.EVENTS.STATUS_HEARTBEAT: self._process_heartbeat,
+            rttDroneComms.comms.EVENTS.GENERAL_NO_HEARTBEAT: self._process_no_heartbeat,
+            rttDroneComms.comms.EVENTS.STATUS_EXCEPTION: self._handle_remote_exception,
+            rttDroneComms.comms.EVENTS.COMMAND_ACK: self._process_ack,
+            rttDroneComms.comms.EVENTS.CONFIG_FREQUENCIES: self._process_frequencies,
+            rttDroneComms.comms.EVENTS.CONFIG_OPTIONS: self._process_options,
+            rttDroneComms.comms.EVENTS.DATA_PING: self._process_ping,
+            rttDroneComms.comms.EVENTS.DATA_VEHICLE: self._process_vehicle,
+            rttDroneComms.comms.EVENTS.DATA_CONE: self._process_cone,
+        }
+        for event, callback in callback_mapping.items():
+            self._rx.registerCallback(event, callback)
 
-        self.__callbacks = {event: [] for event in Events}
-        self.__log.info("MAVModel Created")
+    async def start(self) -> None:
+        """Initialize the MAVModel object."""
+        await self._rx.start()
+        self._log.info("MAVModel Started")
 
-        self.__ack_vectors = {}
+    async def stop(self) -> None:
+        """Stop the MAVModel and underlying resources."""
+        await self._rx.stop()
+        self._log.info("MAVModel Stopped")
 
-        self.__register_rx_callbacks()
+    def register_callback(self, event: Events, callback: Callable) -> None:
+        """Register a callback for the specific event.
 
-    def __register_rx_callbacks(self):
-        self.__rx.registerCallback(
-            rttDroneComms.comms.EVENTS.STATUS_HEARTBEAT, self.__process_heartbeat
-        )
-        self.__rx.registerCallback(
-            rttDroneComms.comms.EVENTS.GENERAL_NO_HEARTBEAT, self.__process_no_heartbeat
-        )
-        self.__rx.registerCallback(
-            rttDroneComms.comms.EVENTS.STATUS_EXCEPTION, self.__handle_remote_exception
-        )
-        self.__rx.registerCallback(
-            rttDroneComms.comms.EVENTS.COMMAND_ACK, self.__process_ack
-        )
-        self.__rx.registerCallback(
-            rttDroneComms.comms.EVENTS.CONFIG_FREQUENCIES, self.__process_frequencies
-        )
-        self.__rx.registerCallback(
-            rttDroneComms.comms.EVENTS.CONFIG_OPTIONS, self.__process_options
-        )
-        self.__rx.registerCallback(
-            rttDroneComms.comms.EVENTS.DATA_PING, self.__process_ping
-        )
-        self.__rx.registerCallback(
-            rttDroneComms.comms.EVENTS.DATA_VEHICLE, self.__process_vehicle
-        )
-        self.__rx.registerCallback(
-            rttDroneComms.comms.EVENTS.DATA_CONE, self.__process_cone
-        )
-
-    def start(self):
-        """
-        Initializes the MAVModel object
-        """
-        self.__rx.start()
-        self.__log.info("MAVModel Started")
-
-    def stop(self):
-        """
-        Stop the MAVModel and underlying resources
-        """
-        self.__rx.stop()
-        self.__log.info("MAVModel Stopped")
-
-    def register_callback(self, event: Events, callback):
-        """
-        Registers a callback for the specific event
         Args:
-            event: Event to trigger on
-            callback: Callback to call
-        """
-        assert isinstance(event, Events)
-        self.__callbacks[event].append(callback)
+        ----
+            event (Events): Event to trigger on
+            callback (Callable): Callback to call
 
-    def start_mission(self, timeout: int):
+        Raises:
+        ------
+            TypeError: If the event type is invalid
+
         """
-        Sends the start mission command
-        Args:
-            timeout: Timeout in seconds
-        """
-        self.__send_command_and_wait(
-            0x07, rttDroneComms.comms.rttSTARTCommand(), timeout, "START"
+        if not isinstance(event, Events):
+            msg = "Invalid event type"
+            raise TypeError(msg)
+        self._callbacks[event].append(callback)
+
+    async def start_mission(self) -> None:
+        """Send the start mission command."""
+        await self._send_command_and_wait(
+            0x07,
+            rttDroneComms.comms.rttSTARTCommand(),
+            "START",
         )
 
-    def stop_mission(self, timeout: int):
-        """
-        Sends the stop mission command
-        Args:
-            timeout: Timeout in seconds
-        """
-        self.__send_command_and_wait(
-            0x09, rttDroneComms.comms.rttSTOPCommand(), timeout, "STOP"
+    async def stop_mission(self) -> None:
+        """Send the stop mission command."""
+        await self._send_command_and_wait(
+            0x09,
+            rttDroneComms.comms.rttSTOPCommand(),
+            "STOP",
         )
 
-    def __send_command_and_wait(
-        self, command_id: int, command, timeout: int, command_name: str
-    ):
-        event = threading.Event()
-        self.__ack_vectors[command_id] = [event, 0]
-        self.__rx.sendPacket(command)
-        self.__log.info(f"Sent {command_name} command")
-        event.wait(timeout=timeout)
-        if not self.__ack_vectors.pop(command_id)[1]:
-            raise RuntimeError(f"{command_name} NACKED")
+    async def _send_command_and_wait(
+        self,
+        command_id: int,
+        command: rttDroneComms.comms.BinaryPacket,
+        command_name: str,
+    ) -> None:
+        event = asyncio.Event()
+        self._ack_vectors[command_id] = [event, 0]
+        await self._rx.sendPacket(command)
+        self._log.info(f"Sent {command_name} command")
+        try:
+            await asyncio.wait_for(event.wait(), timeout=10)
+        except asyncio.TimeoutError as err:
+            msg = f"{command_name} timed out"
+            raise RuntimeError(msg) from err
+        if not self._ack_vectors.pop(command_id)[1]:
+            msg = f"{command_name} NACKED"
+            raise RuntimeError(msg)
 
-    def get_frequencies(self, timeout: int):
-        """
-        Retrieves the PRX_frequencies from the payload
-        Args:
-            timeout: Seconds to wait before timing out
+    async def get_frequencies(self) -> list[int]:
+        """Retrieve the PRX_frequencies from the payload.
+
+        Returns
+        -------
+            List of frequencies
+
         """
         if self._option_cache_dirty[self.TGT_PARAMS] == self.CACHE_INVALID:
-            frequency_pack_event = threading.Event()
+            frequency_pack_event = asyncio.Event()
             self.register_callback(Events.GetFreqs, frequency_pack_event.set)
 
-            self.__rx.sendPacket(rttDroneComms.comms.rttGETFCommand())
-            self.__log.info("Sent getF command")
+            await self._rx.sendPacket(rttDroneComms.comms.rttGETFCommand())
+            self._log.info("Sent getF command")
 
-            frequency_pack_event.wait(timeout=timeout)
+            try:
+                await asyncio.wait_for(
+                    frequency_pack_event.wait(),
+                    timeout=10,
+                )
+            except asyncio.TimeoutError as err:
+                msg = "Timeout waiting for frequencies"
+                raise RuntimeError(msg) from err
         return self.pp_options["TGT_frequencies"]
 
-    def set_frequencies(self, freqs: list, timeout: int):
-        """
-        Sends the command to set the specific PRX_frequencies
+    async def set_frequencies(self, freqs: list[int]) -> None:
+        """Send the command to set the specific PRX_frequencies.
+
         Args:
-            freqs: Frequencies to set as a list
-            timeout: Timeout in seconds
+        ----
+            freqs (list[int]): Frequencies to set
+
         """
-        assert isinstance(freqs, list)
-        assert all(isinstance(freq, int) for freq in freqs)
+        if not isinstance(freqs, list) or not all(
+            isinstance(freq, int) for freq in freqs
+        ):
+            msg = "Invalid frequencies"
+            raise TypeError(msg)
 
         self._option_cache_dirty[self.TGT_PARAMS] = self.CACHE_DIRTY
-        self.__send_command_and_wait(
-            0x03, rttDroneComms.comms.rttSETFCommand(freqs), timeout, "SETF"
+        await self._send_command_and_wait(
+            0x03,
+            rttDroneComms.comms.rttSETFCommand(freqs),
+            "SETF",
         )
 
-    def add_frequency(self, frequency: int, timeout: int):
-        """
-        Adds the specified frequency to the target frequencies.
-        If the specified frequency is already in TGT_frequencies, this function does nothing.
-        Otherwise, this function will update the TGT_frequencies on the payload.
+    async def add_frequency(self, frequency: int) -> None:
+        """Add the specified frequency to the target frequencies.
+
+        If the specified frequency is already in TGT_frequencies, this function does
+        nothing. Otherwise, this function will update the TGT_frequencies on the
+        payload.
+
         Args:
-            frequency: Frequency to add
-            timeout: Timeout in seconds
+        ----
+            frequency (int): Frequency to add
+
         """
         if frequency not in self.pp_options["TGT_frequencies"]:
-            self.set_frequencies(
-                self.pp_options["TGT_frequencies"] + [frequency], timeout
+            await self.set_frequencies(
+                self.pp_options["TGT_frequencies"] + [frequency],
             )
 
-    def remove_frequency(self, frequency: int, timeout: int):
-        """
-        Removes the specified frequency from the target frequencies.
-        If the specified frequency is not in TGT_frequencies, this function raises a RuntimeError.
-        Otherwise, this function will update the TGT_frequencies on the payload.
+    async def remove_frequency(self, frequency: int) -> None:
+        """Remove the specified frequency from the target frequencies.
+
+        If the specified frequency is not in TGT_frequencies, this function raises a
+        RuntimeError. Otherwise, this function will update the TGT_frequencies on the
+        payload.
+
         Args:
-            frequency: Frequency to remove
-            timeout: Timeout in seconds
+        ----
+            frequency (int): Frequency to remove
+
         """
         if frequency not in self.pp_options["TGT_frequencies"]:
-            raise RuntimeError("Invalid frequency")
+            msg = "Invalid frequency"
+            raise RuntimeError(msg)
         new_freqs = [f for f in self.pp_options["TGT_frequencies"] if f != frequency]
-        self.set_frequencies(new_freqs, timeout)
+        await self.set_frequencies(new_freqs)
 
-    def get_options(self, scope: int, timeout: int):
-        """
-        Retrieves and returns the options as a dictionary from the remote.
-        Scope should be set to one of MAVModel.BASE_OPTIONS, MAVModel.EXP_OPTIONS, or MAVModel.ENG_OPTIONS.
+    async def get_options(self, scope: int) -> dict:
+        """Retrieve and return the options as a dictionary from the remote.
+
+        Scope should be set to one of MAVModel.BASE_OPTIONS, MAVModel.EXP_OPTIONS, or
+        MAVModel.ENG_OPTIONS.
+
         Args:
-            scope: Scope of options to retrieve
-            timeout: Timeout in seconds
+        ----
+            scope (int): Scope of options to retrieve
+
+        Returns:
+        -------
+            Dictionary of options
+
         """
-        option_packet_event = threading.Event()
+        option_packet_event = asyncio.Event()
         self.register_callback(Events.GetOptions, option_packet_event.set)
 
-        self.__rx.sendPacket(rttDroneComms.comms.rttGETOPTCommand(scope))
-        self.__log.info("Sent GETOPT command")
+        await self._rx.sendPacket(rttDroneComms.comms.rttGETOPTCommand(scope))
+        self._log.info("Sent GETOPT command")
 
-        option_packet_event.wait(timeout=timeout)
+        try:
+            await asyncio.wait_for(option_packet_event.wait(), timeout=10)
+        except asyncio.TimeoutError as err:
+            msg = "Timeout waiting for options"
+            raise RuntimeError(msg) from err
 
         accepted_keywords = []
         if scope >= self.BASE_OPTIONS:
-            accepted_keywords.extend(self.__base_option_keywords)
+            accepted_keywords.extend(self._base_option_keywords)
         if scope >= self.EXP_OPTIONS:
-            accepted_keywords.extend(self.__exp_option_keywords)
+            accepted_keywords.extend(self._exp_option_keywords)
         if scope >= self.ENG_OPTIONS:
-            accepted_keywords.extend(self.__eng_option_keywords)
+            accepted_keywords.extend(self._eng_option_keywords)
 
         return {key: self.pp_options[key] for key in accepted_keywords}
 
-    def get_option(self, keyword: str, timeout: int = 10):
-        """
-        Retrieves a specific option by keyword
-        Args:
-            keyword: Keyword of the option to retrieve
-            timeout: Timeout in seconds
-        """
-        if keyword in self.__base_option_keywords:
-            if self._option_cache_dirty[self.BASE_OPTIONS] == self.CACHE_INVALID:
-                return self.get_options(self.BASE_OPTIONS, timeout)[keyword]
-        elif keyword in self.__exp_option_keywords:
-            if self._option_cache_dirty[self.EXP_OPTIONS] == self.CACHE_INVALID:
-                return self.get_options(self.EXP_OPTIONS, timeout)[keyword]
-        elif keyword in self.__eng_option_keywords:
-            if self._option_cache_dirty[self.ENG_OPTIONS] == self.CACHE_INVALID:
-                return self.get_options(self.ENG_OPTIONS, timeout)[keyword]
-        return copy.deepcopy(self.pp_options[keyword])
+    async def get_option(self, keyword: str) -> any | None:
+        """Retrieve a specific option by keyword.
 
-    def set_options(self, timeout: int, **kwargs):
-        """
-        Sets the specified options on the payload.
         Args:
-            timeout: Timeout in seconds
+        ----
+            keyword: Keyword of the option to retrieve
+
+        Returns:
+        -------
+            The option value or None if the keyword is invalid
+
+        """
+        option_groups = [
+            (self._base_option_keywords, self.BASE_OPTIONS),
+            (self._exp_option_keywords, self.EXP_OPTIONS),
+            (self._eng_option_keywords, self.ENG_OPTIONS),
+        ]
+
+        for keywords, scope in option_groups:
+            if (
+                keyword in keywords
+                and self._option_cache_dirty[scope] == self.CACHE_INVALID
+            ):
+                options = await self.get_options(scope)
+                return options.get(keyword)
+
+        return self.pp_options.get(keyword)
+
+    async def set_options(self, **kwargs: dict[str, Any]) -> None:
+        """Set the specified options on the payload.
+
+        Args:
+        ----
             kwargs: Options to set by keyword
+
         """
         scope = self.BASE_OPTIONS
         for keyword in kwargs:
-            if keyword in self.__base_option_keywords:
+            if keyword in self._base_option_keywords:
                 scope = max(scope, self.BASE_OPTIONS)
-            elif keyword in self.__exp_option_keywords:
+            elif keyword in self._exp_option_keywords:
                 scope = max(scope, self.EXP_OPTIONS)
-            elif keyword in self.__eng_option_keywords:
+            elif keyword in self._eng_option_keywords:
                 scope = max(scope, self.ENG_OPTIONS)
             else:
-                raise KeyError
+                msg = f"Invalid option keyword: {keyword}"
+                raise KeyError(msg)
 
         self.pp_options.update(kwargs)
         accepted_keywords = []
         if scope >= self.BASE_OPTIONS:
             self._option_cache_dirty[self.BASE_OPTIONS] = self.CACHE_DIRTY
-            accepted_keywords.extend(self.__base_option_keywords)
+            accepted_keywords.extend(self._base_option_keywords)
         if scope >= self.EXP_OPTIONS:
             self._option_cache_dirty[self.EXP_OPTIONS] = self.CACHE_DIRTY
-            accepted_keywords.extend(self.__exp_option_keywords)
+            accepted_keywords.extend(self._exp_option_keywords)
         if scope >= self.ENG_OPTIONS:
             self._option_cache_dirty[self.ENG_OPTIONS] = self.CACHE_DIRTY
-            accepted_keywords.extend(self.__eng_option_keywords)
+            accepted_keywords.extend(self._eng_option_keywords)
 
-        self.__send_command_and_wait(
+        await self._send_command_and_wait(
             0x05,
             rttDroneComms.comms.rttSETOPTCommand(
-                scope, **{key: self.pp_options[key] for key in accepted_keywords}
+                scope,
+                **{key: self.pp_options[key] for key in accepted_keywords},
             ),
-            timeout,
             "SETOPT",
         )
 
-    def send_upgrade_packet(self, byte_stream: bytes):
+    async def send_upgrade_packet(self, byte_stream: bytes) -> None:
+        """Send the upgrade packet to the payload.
+
+        Args:
+        ----
+            byte_stream (bytes): Byte stream to send
+
+        """
         num_packets = -1
         if len(byte_stream) % 1000 != 0:
             num_packets = len(byte_stream) // 1000 + 1
@@ -318,20 +359,19 @@ class MAVModel:
         for i in range(num_packets):
             start_idx = i * 1000
             end_idx = start_idx + 1000
-            self.__rx.sendPacket(
+            await self._rx.sendPacket(
                 rttDroneComms.comms.rttUpgradePacket(
-                    i + 1, num_packets, byte_stream[start_idx:end_idx]
-                )
+                    i + 1,
+                    num_packets,
+                    byte_stream[start_idx:end_idx],
+                ),
             )
 
-    def __process_heartbeat(self, packet: rttDroneComms.comms.rttHeartBeatPacket):
-        """
-        Internal callback for heartbeat packets.
-        Args:
-            packet: Heartbeat packet payload
-            addr: Source of the packet
-        """
-        self.__log.info("Received heartbeat")
+    async def _process_heartbeat(
+        self,
+        packet: rttDroneComms.comms.rttHeartBeatPacket,
+    ) -> None:
+        self._log.info("Received heartbeat")
         self.state.update(
             {
                 "STS_sdr_status": SDRInitStates(packet.sdrState),
@@ -339,69 +379,46 @@ class MAVModel:
                 "STS_gps_status": ExtsStates(packet.sensorState),
                 "STS_sys_status": RTTStates(packet.systemState),
                 "STS_sw_status": packet.switchState,
-            }
+            },
         )
-        for callback in self.__callbacks[Events.Heartbeat]:
+        for callback in self._callbacks[Events.Heartbeat]:
             callback()
 
-    def __process_no_heartbeat(self, packet, addr):
-        """
-        Internal callback to handle no heartbeat messages
-        Args:
-            packet: None
-            addr: None
-        """
-        for callback in self.__callbacks[Events.NoHeartbeat]:
+    async def _process_no_heartbeat(self) -> None:
+        for callback in self._callbacks[Events.NoHeartbeat]:
             callback()
 
-    def __handle_remote_exception(
-        self, packet: rttDroneComms.comms.rttRemoteExceptionPacket
-    ):
-        """
-        Internal callback to handle traceback messages
-        Args:
-            packet: Traceback packet payload
-            addr: Source of packet
-        """
-        self.__log.exception("Remote Exception: %s", packet.exception)
-        self.__log.exception("Remote Traceback: %s", packet.traceback)
-        for callback in self.__callbacks[Events.Exception]:
+    async def _handle_remote_exception(
+        self,
+        packet: rttDroneComms.comms.rttRemoteExceptionPacket,
+    ) -> None:
+        self._log.exception("Remote Exception: %s", packet.exception)
+        self._log.exception("Remote Traceback: %s", packet.traceback)
+        for callback in self._callbacks[Events.Exception]:
             callback()
 
-    def __process_ack(self, packet: rttDroneComms.comms.rttACKCommand):
-        """
-        Internal callback to handle command ACK packets from the payload.
-        Args:
-            packet: ACK message
-            addr: Source address
-        """
+    async def _process_ack(self, packet: rttDroneComms.comms.rttACKCommand) -> None:
         command_id = packet.commandID
-        if command_id in self.__ack_vectors:
-            vector = self.__ack_vectors[command_id]
+        if command_id in self._ack_vectors:
+            vector = self._ack_vectors[command_id]
             vector[1] = packet.ack
             vector[0].set()
 
-    def __process_frequencies(self, packet: rttDroneComms.comms.rttFrequenciesPacket):
-        """
-        Internal callback to handle frequency messages.
-        Args:
-            packet: Frequency message payload
-            addr: Source of packet as a string
-        """
-        self.__log.info("Received frequencies")
+    async def _process_frequencies(
+        self,
+        packet: rttDroneComms.comms.rttFrequenciesPacket,
+    ) -> None:
+        self._log.info("Received frequencies")
         self.pp_options["TGT_frequencies"] = packet.frequencies
         self._option_cache_dirty[self.TGT_PARAMS] = self.CACHE_GOOD
-        for callback in self.__callbacks[Events.GetFreqs]:
+        for callback in self._callbacks[Events.GetFreqs]:
             callback()
 
-    def __process_options(self, packet: rttDroneComms.comms.rttOptionsPacket):
-        """
-        Internal callback to handle options messages.
-        Args:
-            packet: Options packet payload
-            addr: Source of packet
-        """
-        self.__log.info("Received options")
+    async def _process_options(
+        self,
+        packet: rttDroneComms.comms.rttOptionsPacket,
+    ) -> None:
+        self._log.info("Received options")
         for parameter in packet.options:
             self.pp_options[parameter] = packet.options[parameter]
         if packet.scope >= self.BASE_OPTIONS:
@@ -411,44 +428,29 @@ class MAVModel:
         if packet.scope >= self.ENG_OPTIONS:
             self._option_cache_dirty[self.ENG_OPTIONS] = self.CACHE_GOOD
 
-        for callback in self.__callbacks[Events.GetOptions]:
+        for callback in self._callbacks[Events.GetOptions]:
             callback()
 
-    def __process_ping(self, packet: rttDroneComms.comms.rttPingPacket):
-        """
-        Internal callback to handle ping packets from the payload.
-        Args:
-            packet: Ping packet
-            addr: Source address
-        """
+    async def _process_ping(self, packet: rttDroneComms.comms.rttPingPacket) -> None:
         ping_obj = RTTPing.from_packet(packet)
         estimate = self.est_mgr.add_ping(ping_obj)
-        for callback in self.__callbacks[Events.NewPing]:
+        for callback in self._callbacks[Events.NewPing]:
             callback()
         if estimate is not None:
-            for callback in self.__callbacks[Events.NewEstimate]:
+            for callback in self._callbacks[Events.NewEstimate]:
                 callback()
 
-    def __process_vehicle(self, packet: rttDroneComms.comms.rttVehiclePacket):
-        """
-        Internal callback to handle vehicle position packets from the payload.
-        Args:
-            packet: Vehicle Position packet
-            addr: Source address
-        """
+    async def _process_vehicle(
+        self,
+        packet: rttDroneComms.comms.rttVehiclePacket,
+    ) -> None:
         coordinate = [packet.lat, packet.lon, packet.alt, packet.hdg]
         self.state["VCL_track"][packet.timestamp] = coordinate
-        for callback in self.__callbacks[Events.VehicleInfo]:
+        for callback in self._callbacks[Events.VehicleInfo]:
             callback()
 
-    def __process_cone(self, packet: rttDroneComms.comms.rttConePacket):
-        """
-        Internal callback to handle cone packets from the payload.
-        Args:
-            packet: Cone packet
-            addr: Source address
-        """
+    async def _process_cone(self, packet: rttDroneComms.comms.rttConePacket) -> None:
         coordinate = [packet.lat, packet.lon, packet.alt, packet.power, packet.angle]
         self.state["CONE_track"][packet.timestamp] = coordinate
-        for callback in self.__callbacks[Events.ConeInfo]:
+        for callback in self._callbacks[Events.ConeInfo]:
             callback()
