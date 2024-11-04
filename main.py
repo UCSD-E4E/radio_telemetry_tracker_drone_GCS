@@ -6,7 +6,7 @@ import serial.tools.list_ports
 app = Flask(__name__)
 
 # Define the folder to save uploaded files
-UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # Allowed extensions for device communication

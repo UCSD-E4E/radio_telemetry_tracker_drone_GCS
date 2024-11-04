@@ -67,48 +67,76 @@ document.getElementById('device-form').addEventListener('submit', function (e) {
 // GeoTIFF upload and display
 document.getElementById('geotiff-form').addEventListener('submit', function (e) {
     e.preventDefault();
+    console.log('Form submitted');
     const formData = new FormData(this);
     document.querySelector('.loading').style.display = 'block';
+    console.log('Loading spinner displayed');
 
     fetch('/upload_geotiff', {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log('Received response from /upload_geotiff');
+        return response.json();
+    })
     .then(data => {
+        console.log('Parsed response data:', data);
         if (data.error) {
+            console.error('Error from server:', data.error);
             alert(data.error);
             document.querySelector('.loading').style.display = 'none';
         } else {
+            console.log('GeoTIFF file path received:', data.file_path);
             // Load and display the GeoTIFF
             fetch(data.file_path)
-                .then(response => response.arrayBuffer())
+                .then(response => {
+                    console.log('GeoTIFF file fetched');
+                    return response.arrayBuffer();
+                })
                 .then(arrayBuffer => {
-                    parseGeoraster(arrayBuffer).then(georaster => {
-                        // Remove existing GeoTIFF layer if it exists
-                        if (currentGeoTiffLayer) {
-                            map.removeLayer(currentGeoTiffLayer);
-                        }
+                    console.log('GeoTIFF ArrayBuffer received, parsing GeoTIFF');
+                    return parseGeoraster(arrayBuffer);
+                })
+                .then(georaster => {
+                    console.log('GeoTIFF parsed successfully:', georaster);
 
-                        // Create and add the new GeoTIFF layer
-                        currentGeoTiffLayer = new GeoRasterLayer({
-                            georaster: georaster,
-                            opacity: 0.7,
-                            resolution: 256
-                        });
-                        
-                        currentGeoTiffLayer.addTo(map);
+                    // Inspect the georaster object to understand its structure
+                    console.log('GeoRaster properties:', Object.keys(georaster));
 
-                        // Fit map to GeoTIFF bounds
+                    // Remove existing GeoTIFF layer if it exists
+                    if (currentGeoTiffLayer) {
+                        console.log('Removing existing GeoTIFF layer');
+                        map.removeLayer(currentGeoTiffLayer);
+                    }
+
+                    // Create and add the new GeoTIFF layer
+                    console.log('Creating new GeoTIFF layer');
+                    currentGeoTiffLayer = new GeoRasterLayer({
+                        georaster: georaster,
+                        opacity: 0.7,
+                        resolution: 256
+                    });
+                    
+                    currentGeoTiffLayer.addTo(map);
+                    console.log('GeoTIFF layer added to the map');
+
+                    // Check if bounds are available before attempting to fit map bounds
+                    if (georaster.bounds) {
                         const bounds = [
                             [georaster.bounds.south, georaster.bounds.west],
                             [georaster.bounds.north, georaster.bounds.east]
                         ];
                         map.fitBounds(bounds);
+                        console.log('Map bounds updated to fit GeoTIFF');
+                    } else {
+                        console.warn('GeoTIFF does not have valid bounds information. Skipping map fit to bounds.');
+                        alert('GeoTIFF loaded, but geographic boundaries are not available.');
+                    }
 
-                        document.querySelector('.loading').style.display = 'none';
-                        alert('GeoTIFF loaded successfully!');
-                    });
+                    document.querySelector('.loading').style.display = 'none';
+                    console.log('Loading spinner hidden');
+                    alert('GeoTIFF loaded successfully!');
                 })
                 .catch(error => {
                     console.error('Error loading GeoTIFF:', error);
@@ -116,6 +144,11 @@ document.getElementById('geotiff-form').addEventListener('submit', function (e) 
                     document.querySelector('.loading').style.display = 'none';
                 });
         }
+    })
+    .catch(error => {
+        console.error('Error during /upload_geotiff request:', error);
+        alert('Failed to upload GeoTIFF');
+        document.querySelector('.loading').style.display = 'none';
     });
 });
 
