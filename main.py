@@ -2,6 +2,8 @@ import os
 from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 import serial.tools.list_ports
+import rasterio
+from rasterio.io import MemoryFile
 
 app = Flask(__name__)
 
@@ -52,21 +54,26 @@ def list_devices():
 
 @app.route('/upload_geotiff', methods=['POST'])
 def upload_geotiff():
-    """Handle the upload of a GeoTIFF file."""
-    if 'geotiff' not in request.files:
-        return jsonify({'error': 'No file part'})
-    
-    file = request.files['geotiff']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'})
+    try:
+        # Get the uploaded file
+        file = request.files['geotiff']
         
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        return jsonify({'message': 'GeoTIFF uploaded successfully', 'file_path': file_path})
+        # Read the file into a MemoryFile
+        with MemoryFile(file.read()) as memfile:
+            with memfile.open() as dataset:
+                # Extract bounds from the GeoTIFF
+                bounds = dataset.bounds
+                response = {
+                    'xmin': bounds.left,
+                    'ymin': bounds.bottom,
+                    'xmax': bounds.right,
+                    'ymax': bounds.top
+                }
+                
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
     
-    return jsonify({'error': 'Invalid file type'})
 
 @app.route('/export_geojson', methods=['POST'])
 def export_geojson():
