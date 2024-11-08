@@ -1,25 +1,13 @@
 import os
 from flask import Flask, render_template, request, jsonify
-from werkzeug.utils import secure_filename
 import serial.tools.list_ports
-import rasterio
 from rasterio.io import MemoryFile
+import shapefile
 
 app = Flask(__name__)
 
-# Define the folder to save uploaded files
-UPLOAD_FOLDER = 'static/uploads'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# Allowed extensions for device communication
-ALLOWED_EXTENSIONS = {'txt', 'log','tif','tiff'}
-
-def allowed_file(filename):
-    """Check if the file has an allowed extension."""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
 def list_connected_devices():
-    """List all available serial ports, excluding those with 'n/a' descriptions"""
+    """List all available serial ports, excluding those with 'n/a' descriptions."""
     ports = serial.tools.list_ports.comports()
     devices = [
         {"port": port.device, "description": port.description, "hwid": port.hwid} 
@@ -54,6 +42,7 @@ def list_devices():
 
 @app.route('/upload_geotiff', methods=['POST'])
 def upload_geotiff():
+    """Handle GeoTIFF file upload, extract bounds, and return as JSON."""
     try:
         # Get the uploaded file
         file = request.files['geotiff']
@@ -74,14 +63,99 @@ def upload_geotiff():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
+@app.route('/upload_shapefile', methods=['POST'])
+def upload_shapefile():
+    """Handle shapefile upload, convert to GeoJSON, and return as JSON."""
+    # Check if any files were uploaded
+    if 'shapefiles' not in request.files:
+        return jsonify({'error': 'No files uploaded'}), 400
 
+    shapefiles = request.files.getlist('shapefiles')
+    if not shapefiles:
+        return jsonify({'error': 'No shapefiles found'}), 400
+
+    # Initialize file variables
+    shp_file = None
+    shx_file = None
+    dbf_file = None
+    prj_file = None
+
+    # Identify each file by its extension
+    for f in shapefiles:
+        if f.filename.endswith('.shp'):
+            shp_file = f
+        elif f.filename.endswith('.shx'):
+            shx_file = f
+        elif f.filename.endswith('.dbf'):
+            dbf_file = f
+        elif f.filename.endswith('.prj'):
+            prj_file = f
+
+    # Ensure mandatory files are present
+    if not shp_file or not shx_file or not dbf_file:
+        return jsonify({'error': 'Missing mandatory shapefile components (.shp, .shx, .dbf)'}), 400
+
+    try:
+        # Save the uploaded files to a temporary location for reading
+        temp_dir = '/tmp/shapefiles'
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+
+        shp_path = os.path.join(temp_dir, shp_file.filename)
+        shx_path = os.path.join(temp_dir, shx_file.filename)
+        dbf_path = os.path.join(temp_dir, dbf_file.filename)
+        prj_path = os.path.join(temp_dir, prj_file.filename) if prj_file else None
+
+        # Save each file locally
+        shp_file.save(shp_path)
+        shx_file.save(shx_path)
+        dbf_file.save(dbf_path)
+        if prj_file:
+            prj_file.save(prj_path)
+
+        # Read the shapefile using the saved files
+        with shapefile.Reader(shp=shp_path, shx=shx_path, dbf=dbf_path) as shp:
+            geojson_features = []
+            for sr in shp.shapeRecords():
+                geom = sr.shape.__geo_interface__
+                geojson_features.append({
+                    "type": "Feature",
+                    "geometry": geom,
+                    "properties": sr.record.as_dict()
+                })
+
+            geojson_data = {
+                "type": "FeatureCollection",
+                "features": geojson_features
+            }
+        # Return the GeoJSON data to the frontend
+        return jsonify(geojson_data), 200
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': 'Failed to process shapefile'}), 500
+    
 @app.route('/export_geojson', methods=['POST'])
 def export_geojson():
     """Export GeoJSON data to a file."""
-    geojson_data = request.json.get('geojson')
-    with open(os.path.join(app.config['UPLOAD_FOLDER'], 'shapes.geojson'), 'w') as f:
-        f.write(geojson_data)
-    return jsonify({'message': 'GeoJSON exported successfully'})
+    try:
+        # Extract GeoJSON data from the request
+        data = request.get_json()
+        geojson_str = data.get('geojson')
+
+        if not geojson_str:
+            return jsonify({'error': 'No GeoJSON data provided'}), 400
+
+        # Save GeoJSON to a file
+        export_path = '/tmp/exported_data.geojson'
+        with open(export_path, 'w') as geojson_file:
+            geojson_file.write(geojson_str)
+
+        return jsonify({'message': 'GeoJSON data has been successfully exported'}), 200
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': 'Failed to export GeoJSON data'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

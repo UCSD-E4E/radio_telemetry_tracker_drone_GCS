@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,11 +9,12 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='leaflet/leaflet.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
+
 <body>
     <div class="container">
         <div class="sidebar">
             <h1>GIS Features</h1>
-            
+
             <!-- Device selection -->
             <div id="device-selection">
                 <h3>Select Device</h3>
@@ -23,7 +25,7 @@
                     <button type="submit">Submit</button>
                 </form>
             </div>
-            
+
             <!-- GeoTIFF upload -->
             <div id="upload-section">
                 <h3>Upload GeoTIFF</h3>
@@ -32,11 +34,20 @@
                     <button type="submit">Upload</button>
                 </form>
             </div>
-            
+
+            <!-- Shapefile upload -->
+            <div id="upload-shapefile-section">
+                <h3>Upload Shapefile</h3>
+                <form id="shapefile-form" enctype="multipart/form-data">
+                    <input type="file" name="shapefiles" id="shapefile" accept=".shp,.shx,.dbf,.prj" multiple>
+                    <button type="submit">Upload</button>
+                </form>
+            </div>
+
             <!-- Export Button -->
             <button id="export-geojson">Export GeoJSON</button>
         </div>
-        
+
         <!-- Map -->
         <div class="map-container">
             <div id="map">
@@ -45,12 +56,14 @@
         </div>
     </div>
 
-    <!-- Required libraries. -->
+    <!-- Required libraries -->
     <script src="{{ url_for('static', filename='leaflet/leaflet.css') }}"></script>
     <script src="{{ url_for('static', filename='leaflet/leaflet.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/geotiff"></script>
     <script src="https://unpkg.com/georaster"></script>
     <script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.min.js"></script>
+    <script src="https://unpkg.com/shapefile@0.6.6/dist/shapefile.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
 </body>
+
 </html>
