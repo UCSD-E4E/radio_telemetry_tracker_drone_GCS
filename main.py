@@ -1,10 +1,14 @@
 import os
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, send_from_directory, jsonify, request
 import serial.tools.list_ports
 from rasterio.io import MemoryFile
 import shapefile
+from flask_cors import CORS  # Import CORS
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='gis-features/build', static_url_path='')
+
+# Enable CORS for the entire app
+CORS(app)  # This allows all domains by default
 
 def list_connected_devices():
     """List all available serial ports, excluding those with 'n/a' descriptions."""
@@ -19,7 +23,7 @@ def list_connected_devices():
 @app.route('/')
 def home():
     """Render the home page."""
-    return render_template('index.html')
+    return send_from_directory(os.path.join(app.root_path, 'gis-features', 'build'), 'index.html')
 
 @app.route('/device', methods=['POST'])
 def select_device():
@@ -156,6 +160,11 @@ def export_geojson():
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({'error': 'Failed to export GeoJSON data'}), 500
+
+@app.route('/<path:path>')
+def static_files(path):
+    """Serve static files (CSS, JS, images, etc.) from the React build folder."""
+    return send_from_directory(os.path.join(app.root_path, 'gis-features', 'build'), path)
 
 if __name__ == '__main__':
     app.run(debug=True)
