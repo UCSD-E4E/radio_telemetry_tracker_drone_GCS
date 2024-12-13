@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "radio-telemetry-tracker-drone-gcs"
+version = "0.1.0"
+description = "Ground control software for tracking drone telemetry."
+authors = ["Wesley Lewis <wesleylewis05@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+flask = "^2.2"
+pyserial = "^3.5"
+rasterio = "^1.2"
+pyshp = "^2.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
