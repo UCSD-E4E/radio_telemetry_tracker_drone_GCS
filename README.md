@@ -1,8 +1,8 @@
-## Radio Telemetry Tracker Drone Ground Control Station
+# Radio Telemetry Tracker Drone Ground Control Station
 
-# Using Poetry
+## Using Poetry
 
-## 1. Set Up the Project Environment
+### 1. Set Up the Project Environment
 
 Ensure your project is initialized with Poetry. If you haven’t already, run:
 
@@ -12,7 +12,7 @@ poetry install
 
 This installs all dependencies specified in your `pyproject.toml` and sets up a virtual environment.
 
-## 2. Activate the Virtual Environment
+### 2. Activate the Virtual Environment
 
 Activate the Poetry-managed virtual environment:
 
@@ -20,7 +20,7 @@ Activate the Poetry-managed virtual environment:
 poetry shell
 ```
 
-## 3. Run Your Code
+### 3. Run Your Code
 
 You can run your Python script directly using Poetry:
 
