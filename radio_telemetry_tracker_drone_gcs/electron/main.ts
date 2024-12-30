@@ -62,16 +62,12 @@ function createWindow(): void {
     },
   });
 
-  // Try both development and production paths
-  const devPath = path.join(__dirname, "..", "electron", "index.html");
-  const prodPath = path.join(__dirname, "index.html");
+  const indexPath = path.join(__dirname, "index.html");
   
-  if (isDev() && require("fs").existsSync(devPath)) {
-    mainWindow.loadFile(devPath);
-  } else if (require("fs").existsSync(prodPath)) {
-    mainWindow.loadFile(prodPath);
+  if (require("fs").existsSync(indexPath)) {
+    mainWindow.loadFile(indexPath);
   } else {
-    console.error("Could not find index.html in either", devPath, "or", prodPath);
+    console.error("Could not find index.html at", indexPath);
     app.quit();
   }
 
@@ -82,15 +78,6 @@ function createWindow(): void {
 }
 
 function startPythonServer(): void {
-  // If in dev mode, rely on 'npm run dev:backend'
-  if (isDev()) {
-    console.log(
-      "[Dev] Skipping spawn of PyInstaller binary, since 'npm run dev:backend' is already running",
-    );
-    return;
-  }
-
-  // Production mode: spawn the compiled binary from resources
   const platform = os.platform();
   let exeName = "radio_telemetry_tracker_drone_gcs_server";
 
@@ -98,15 +85,13 @@ function startPythonServer(): void {
     exeName += ".exe";
   }
 
-  // The file should be in your app's resources folder
   const exePath = path.join(process.resourcesPath, exeName);
-  console.log("[Prod] Spawning Python server from:", exePath);
+  console.log("Spawning Python server from:", exePath);
 
-  // Create a new process group (this allows us to kill the entire tree later)
   const options = {
     cwd: process.resourcesPath,
-    detached: false, // Don't detach the process
-    windowsHide: true, // Hide the console window on Windows
+    detached: false,
+    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'] as StdioOptions
   };
 
@@ -127,7 +112,6 @@ function startPythonServer(): void {
         pythonProcess = null;
       });
 
-      // Handle errors
       pythonProcess.on("error", (err) => {
         console.error("[Python] Failed to start server:", err);
         pythonProcess = null;
@@ -136,10 +120,6 @@ function startPythonServer(): void {
   } catch (err) {
     console.error("[Python] Failed to spawn server:", err);
   }
-}
-
-function isDev(): boolean {
-  return process.env.NODE_ENV === "development" || !app.isPackaged;
 }
 
 // App lifecycle events
