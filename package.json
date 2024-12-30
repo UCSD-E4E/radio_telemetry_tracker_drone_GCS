@@ -1,0 +1,57 @@
+{
+  "name": "radio-telemetry-tracker-drone-gcs-electron",
+  "version": "0.1.0",
+  "description": "Radio Telemetry Tracker Drone Ground Control Station Electron App",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev:backend": "poetry run radio_telemetry_tracker_drone_gcs_server",
+    "dev:frontend": "tsc -p . && node scripts/copy-assets.js && electron .",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:backend:windows": "poetry run pyinstaller --onefile radio_telemetry_tracker_drone_gcs/main.py --name radio_telemetry_tracker_drone_gcs_server --distpath backend-dist",
+    "build:backend:linux": "poetry run pyinstaller --onefile radio_telemetry_tracker_drone_gcs/main.py --name radio_telemetry_tracker_drone_gcs_server --distpath backend-dist-linux",
+    "build:frontend:windows": "tsc -p . && node scripts/copy-assets.js && electron-builder --windows",
+    "build:frontend:linux": "tsc -p . && node scripts/copy-assets.js && electron-builder --linux",
+    "build:windows": "npm run build:backend:windows && npm run build:frontend:windows",
+    "build:linux": "npm run build:backend:linux && npm run build:frontend:linux",
+    "lint": "eslint . --ext .ts",
+    "lint:fix": "eslint . --ext .ts --fix",
+    "format": "prettier --write ."
+  },
+  "build": {
+    "productName": "Radio Telemetry Tracker Drone GCS",
+    "appId": "com.e4e.rtt.dronegcs",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend-dist/radio_telemetry_tracker_drone_gcs_server.exe",
+        "to": "radio_telemetry_tracker_drone_gcs_server.exe"
+      },
+      {
+        "from": "backend-dist-linux/radio_telemetry_tracker_drone_gcs_server",
+        "to": "radio_telemetry_tracker_drone_gcs_server"
+      }
+    ],
+    "linux": {
+      "category": "Utility"
+    }
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.18.2",
+    "@typescript-eslint/parser": "^8.18.2",
+    "concurrently": "^9.1.1",
+    "electron": "^25.9.8",
+    "electron-builder": "^25.1.8",
+    "eslint": "^8.57.1",
+    "prettier": "^3.4.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "radio-telemetry-tracker-drone-gcs-electron": "file:"
+  }
+}
