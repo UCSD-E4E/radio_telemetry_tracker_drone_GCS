@@ -4,7 +4,7 @@
     "module": "CommonJS",
     "moduleResolution": "Node",
     "lib": ["ESNext", "DOM"],
-    "outDir": "dist",
+    "outDir": "build",
     "sourceMap": true,
     "strict": true,
     "esModuleInterop": true

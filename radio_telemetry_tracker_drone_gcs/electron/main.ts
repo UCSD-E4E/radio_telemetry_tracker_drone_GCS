@@ -1,12 +1,59 @@
 import { app, BrowserWindow } from "electron";
 import * as path from "path";
-import { spawn, ChildProcessWithoutNullStreams } from "child_process";
+import { spawn, ChildProcess, StdioOptions, exec } from "child_process";
 import * as os from "os";
+import treeKill from 'tree-kill';
 
-let pythonProcess: ChildProcessWithoutNullStreams | null = null;
+let pythonProcess: ChildProcess | null = null;
+let mainWindow: BrowserWindow | null = null;
+
+function cleanupProcesses(): void {
+  if (pythonProcess && pythonProcess.pid !== undefined) {
+    try {
+      // First try tree-kill
+      treeKill(pythonProcess.pid, 'SIGKILL', (err) => {
+        if (err) {
+          console.error('Error killing process tree:', err);
+        }
+        
+        // On Windows, also try to kill by process name to ensure cleanup
+        if (process.platform === 'win32') {
+          exec('taskkill /F /IM radio_telemetry_tracker_drone_gcs_server.exe', (error, stdout, stderr) => {
+            if (error) {
+              console.error('Error killing process by name:', error);
+            }
+            if (stderr) {
+              console.error('Taskkill stderr:', stderr);
+            }
+            if (stdout) {
+              console.log('Taskkill stdout:', stdout);
+            }
+          });
+        }
+      });
+    } catch (err) {
+      console.error("Error in cleanup process:", err);
+    } finally {
+      pythonProcess = null;
+    }
+  } else if (process.platform === 'win32') {
+    // Even if we don't have a process reference, try to kill by name
+    exec('taskkill /F /IM radio_telemetry_tracker_drone_gcs_server.exe', (error, stdout, stderr) => {
+      if (error) {
+        console.error('Error killing process by name:', error);
+      }
+      if (stderr) {
+        console.error('Taskkill stderr:', stderr);
+      }
+      if (stdout) {
+        console.log('Taskkill stdout:', stdout);
+      }
+    });
+  }
+}
 
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
     webPreferences: {
@@ -27,6 +74,11 @@ function createWindow(): void {
     console.error("Could not find index.html in either", devPath, "or", prodPath);
     app.quit();
   }
+
+  mainWindow.on("closed", () => {
+    cleanupProcesses();
+    mainWindow = null;
+  });
 }
 
 function startPythonServer(): void {
@@ -39,38 +91,58 @@ function startPythonServer(): void {
   }
 
   // Production mode: spawn the compiled binary from resources
-  const platform = os.platform(); // 'win32', 'linux', 'darwin', etc.
+  const platform = os.platform();
   let exeName = "radio_telemetry_tracker_drone_gcs_server";
 
   if (platform === "win32") {
-    exeName += ".exe"; // On Windows, add .exe
+    exeName += ".exe";
   }
 
   // The file should be in your app's resources folder
   const exePath = path.join(process.resourcesPath, exeName);
   console.log("[Prod] Spawning Python server from:", exePath);
 
-  pythonProcess = spawn(exePath, [], { cwd: process.resourcesPath });
+  // Create a new process group (this allows us to kill the entire tree later)
+  const options = {
+    cwd: process.resourcesPath,
+    detached: false, // Don't detach the process
+    windowsHide: true, // Hide the console window on Windows
+    stdio: ['ignore', 'pipe', 'pipe'] as StdioOptions
+  };
 
-  pythonProcess.stdout.on("data", (data) => {
-    console.log(`[Python STDOUT] ${data}`);
-  });
+  try {
+    pythonProcess = spawn(exePath, [], options);
 
-  pythonProcess.stderr.on("data", (data) => {
-    console.error(`[Python STDERR] ${data}`);
-  });
+    if (pythonProcess) {
+      pythonProcess.stdout?.on("data", (data) => {
+        console.log(`[Python STDOUT] ${data}`);
+      });
 
-  pythonProcess.on("close", (code) => {
-    console.log(`[Python] server exited with code ${code}`);
-    pythonProcess = null;
-  });
+      pythonProcess.stderr?.on("data", (data) => {
+        console.error(`[Python STDERR] ${data}`);
+      });
+
+      pythonProcess.on("close", (code) => {
+        console.log(`[Python] server exited with code ${code}`);
+        pythonProcess = null;
+      });
+
+      // Handle errors
+      pythonProcess.on("error", (err) => {
+        console.error("[Python] Failed to start server:", err);
+        pythonProcess = null;
+      });
+    }
+  } catch (err) {
+    console.error("[Python] Failed to spawn server:", err);
+  }
 }
 
 function isDev(): boolean {
-  // If NODE_ENV=development or Electron not packaged, we assume dev mode
   return process.env.NODE_ENV === "development" || !app.isPackaged;
 }
 
+// App lifecycle events
 app.whenReady().then(() => {
   startPythonServer();
   createWindow();
@@ -82,13 +154,33 @@ app.whenReady().then(() => {
   });
 });
 
-// When all windows are closed, shut down the Python process
+// Handle window-all-closed event
 app.on("window-all-closed", () => {
-  if (pythonProcess) {
-    pythonProcess.kill();
-    pythonProcess = null;
-  }
+  cleanupProcesses();
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+// Handle the quit event
+app.on("quit", () => {
+  cleanupProcesses();
+});
+
+// Handle uncaught exceptions
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
+  cleanupProcesses();
+  app.quit();
+});
+
+// Handle SIGINT and SIGTERM
+process.on("SIGINT", () => {
+  cleanupProcesses();
+  app.quit();
+});
+
+process.on("SIGTERM", () => {
+  cleanupProcesses();
+  app.quit();
 });
