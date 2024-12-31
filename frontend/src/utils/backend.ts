@@ -8,25 +8,21 @@ export interface TileInfo {
     total_size_mb: number;
 }
 
+export interface Signal<T> {
+    connect(callback: (value: T) => void): void;
+    disconnect(callback: (value: T) => void): void;
+}
+
 export interface Backend {
-    get_tile(_z: number, _x: number, _y: number): Promise<string>;
-    get_tile_info(): Promise<TileInfo>;
-    clear_tile_cache(): Promise<void>;
-    get_pois(): Promise<POI[]>;
-    add_poi(_name: string, _coords: [number, number]): Promise<void>;
-    remove_poi(_name: string): Promise<void>;
-    error_message: {
-        connect(_callback: (_message: string) => void): void;
-        disconnect(_callback: (_message: string) => void): void;
-    };
-    tile_info_updated: {
-        connect(_callback: (_info: TileInfo) => void): void;
-        disconnect(_callback: (_info: TileInfo) => void): void;
-    };
-    pois_updated: {
-        connect(_callback: (_pois: POI[]) => void): void;
-        disconnect(_callback: (_pois: POI[]) => void): void;
-    };
+    get_tile: (z: number, x: number, y: number, source: string, offline: boolean) => Promise<string>;
+    get_tile_info: () => Promise<TileInfo>;
+    clear_tile_cache: () => Promise<boolean>;
+    get_pois: () => Promise<POI[]>;
+    add_poi: (name: string, coords: [number, number]) => Promise<boolean>;
+    remove_poi: (name: string) => Promise<boolean>;
+    error_message: Signal<string>;
+    tile_info_updated: Signal<TileInfo>;
+    pois_updated: Signal<POI[]>;
 }
 
 declare global {

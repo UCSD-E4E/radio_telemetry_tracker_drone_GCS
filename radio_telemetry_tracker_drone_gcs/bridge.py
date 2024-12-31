@@ -33,19 +33,19 @@ class Bridge(QObject):
         pois = get_pois()
         self.pois_updated.emit(QVariant(pois))
 
-    @pyqtSlot(int, int, int, result=str)
-    def get_tile(self, z: int, x: int, y: int) -> str:
+    @pyqtSlot(int, int, int, str, bool, result=str)
+    def get_tile(self, z: int, x: int, y: int, source_id: str = 'osm', offline: bool = False) -> str:
         """Get a map tile as base64 encoded PNG data."""
         result = ""
         try:
-            logging.info("Tile request: z=%d, x=%d, y=%d", z, x, y)
+            logging.info("Tile request: z=%d, x=%d, y=%d, source=%s, offline=%s", z, x, y, source_id, offline)
 
-            tile_data = get_tile(z, x, y)
+            tile_data = get_tile(z, x, y, source_id, offline)
             if tile_data:
                 self._emit_tile_info()
                 result = base64.b64encode(tile_data).decode("utf-8")
         except Exception:
-            logging.exception("Error serving tile %d/%d/%d", z, x, y)
+            logging.exception("Error serving tile %d/%d/%d from %s", z, x, y, source_id)
         return result
 
     @pyqtSlot(result="QVariant")
