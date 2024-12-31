@@ -1,50 +1,65 @@
-"""WebSocket server for Radio Telemetry Tracker Drone Ground Control Station."""
+#!/usr/bin/env python3
+"""Main entry point for the Radio Telemetry Tracker Drone Ground Control Station."""
 
-import asyncio
-import logging
+import sys
+from pathlib import Path
 
-import websockets
-from websockets.server import WebSocketServerProtocol
+from PyQt6.QtCore import QUrl
+from PyQt6.QtWebChannel import QWebChannel
+from PyQt6.QtWebEngineCore import QWebEngineScript
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWidgets import QApplication
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-connected_clients = set()
-
-
-async def handler(websocket: WebSocketServerProtocol) -> None:
-    """Handle WebSocket connections and broadcast messages to other clients."""
-    connected_clients.add(websocket)
-    logger.info("New client connected.")
-
-    try:
-        async for message in websocket:
-            logger.info("Received: %s", message)
-            # Echo to all connected clients
-            for client in connected_clients:
-                if client != websocket:
-                    await client.send(message)
-    except websockets.exceptions.ConnectionClosed:
-        pass
-    finally:
-        connected_clients.remove(websocket)
-        logger.info("Client disconnected.")
+from radio_telemetry_tracker_drone_gcs.bridge import Bridge
 
 
-async def main() -> None:
-    """Start the WebSocket server and run indefinitely."""
-    async with websockets.serve(handler, "localhost", 8765):
-        logger.info("WebSocket server started on ws://localhost:8765")
-        await asyncio.Future()  # run forever
+class MainWindow(QWebEngineView):
+    """Main window of the application using QWebEngineView."""
+
+    def __init__(self) -> None:
+        """Initialize the main window."""
+        super().__init__()
+        self.setWindowTitle("Radio Telemetry Tracker Drone GCS")
+
+        # Set up web channel for backend communication
+        self.channel = QWebChannel()
+        self.bridge = Bridge()
+        self.channel.registerObject("backend", self.bridge)
+        self.page().setWebChannel(self.channel)
+
+        # Inject QWebChannel initialization script
+        script = QWebEngineScript()
+        script.setName("qwebchannel")
+        script.setSourceCode("""
+            new QWebChannel(qt.webChannelTransport, function(channel) {
+                window.backend = channel.objects.backend;
+                window.backendLoaded = true;
+                const event = new Event('backendLoaded');
+                window.dispatchEvent(event);
+            });
+        """)
+        script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
+        script.setRunsOnSubFrames(False)
+        self.page().scripts().insert(script)
+
+        # Set window properties
+        self.resize(1200, 800)
+
+        # Load the local web content
+        local_url = QUrl.fromLocalFile(
+            str(Path(__file__).parent.parent / "frontend" / "dist" / "index.html"),
+        )
+        self.setUrl(local_url)
 
 
-def run_server() -> None:
-    """A non-async function that properly runs the 'main()' coroutine.
-
-    This is what we'll reference in pyproject.toml.
-    """
-    asyncio.run(main())
+def main() -> None:
+    """Start the PyQt6 application."""
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    run_server()
+    main()
