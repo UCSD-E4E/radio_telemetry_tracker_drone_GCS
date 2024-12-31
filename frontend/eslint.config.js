@@ -36,7 +36,8 @@ export default [
                 MessageChannel: 'readonly',
                 queueMicrotask: 'readonly',
                 matchMedia: 'readonly',
-                reportError: 'readonly'
+                reportError: 'readonly',
+                HTMLImageElement: 'readonly'
             }
         },
         plugins: {
@@ -62,7 +63,8 @@ export default [
             'getter-return': 'off',
             'valid-typeof': 'off',
             'no-misleading-character-class': 'off',
-            'no-unused-vars': ['error', { 'varsIgnorePattern': '^_', 'argsIgnorePattern': '^_' }]
+            'no-unused-vars': 'off',
+            '@typescript-eslint/no-unused-vars': ['error', { 'varsIgnorePattern': '^_', 'argsIgnorePattern': '^_' }]
         }
     }
 ]; 

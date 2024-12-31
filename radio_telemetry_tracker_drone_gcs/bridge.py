@@ -1,39 +1,107 @@
 """Bridge module for backend-frontend communication."""
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
+import base64
+import logging
+
+from PyQt6.QtCore import QObject, QVariant, pyqtSignal, pyqtSlot
+
+from .tile_server import add_poi, clear_tile_cache, get_pois, get_tile, get_tile_info, init_db, remove_poi
+
+logging.basicConfig(level=logging.INFO)
 
 
 class Bridge(QObject):
-    """Bridge class for calculator operations between Python backend and JavaScript frontend."""
+    """Bridge class for communication between Python backend and JavaScript frontend."""
 
-    # Signals that can be emitted to the frontend
-    calculation_result = pyqtSignal(float)
     error_message = pyqtSignal(str)
+    tile_info_updated = pyqtSignal(QVariant)
+    pois_updated = pyqtSignal(QVariant)
 
     def __init__(self) -> None:
         """Initialize the bridge."""
         super().__init__()
+        # Initialize the tile server database
+        init_db()
 
-    @pyqtSlot(float, str, float, result=float)
-    def calculate(self, num1: float, operator: str, num2: float) -> float:
-        """Perform calculation based on the operator."""
+    def _emit_tile_info(self) -> None:
+        """Helper to emit tile info as QVariant."""
+        info = get_tile_info()
+        self.tile_info_updated.emit(QVariant(info))
+
+    def _emit_pois(self) -> None:
+        """Helper to emit POIs as QVariant."""
+        pois = get_pois()
+        self.pois_updated.emit(QVariant(pois))
+
+    @pyqtSlot(int, int, int, result=str)
+    def get_tile(self, z: int, x: int, y: int) -> str:
+        """Get a map tile as base64 encoded PNG data."""
+        result = ""
         try:
-            result = 0.0
-            if operator == '+':
-                result = num1 + num2
-            elif operator == '-':
-                result = num1 - num2
-            elif operator == '*':
-                result = num1 * num2
-            elif operator == '/':
-                if num2 == 0:
-                    raise ValueError("Division by zero")
-                result = num1 / num2
-            else:
-                raise ValueError(f"Unknown operator: {operator}")
-            
-            self.calculation_result.emit(result)
-            return result
-        except Exception as e:
-            self.error_message.emit(str(e))
-            return 0.0 
+            logging.info("Tile request: z=%d, x=%d, y=%d", z, x, y)
+
+            tile_data = get_tile(z, x, y)
+            if tile_data:
+                self._emit_tile_info()
+                result = base64.b64encode(tile_data).decode("utf-8")
+        except Exception:
+            logging.exception("Error serving tile %d/%d/%d", z, x, y)
+        return result
+
+    @pyqtSlot(result="QVariant")
+    def get_tile_info(self) -> dict:
+        """Get information about stored tiles."""
+        try:
+            info = get_tile_info()
+            return QVariant(info)
+        except Exception:
+            logging.exception("Error getting tile info")
+            return QVariant({})
+
+    @pyqtSlot(result=bool)
+    def clear_tile_cache(self) -> bool:
+        """Clear all stored tiles."""
+        success = False
+        try:
+            removed = clear_tile_cache()
+            logging.info("Cleared %d tiles", removed)
+            self._emit_tile_info()
+            success = True
+        except Exception:
+            logging.exception("Error clearing tile cache")
+        return success
+
+    @pyqtSlot(result="QVariant")
+    def get_pois(self) -> list[dict]:
+        """Get all POIs."""
+        try:
+            pois = get_pois()
+            logging.info("Retrieved POIs: %s", pois)
+            return QVariant(pois)
+        except Exception:
+            logging.exception("Error getting POIs")
+            return QVariant([])
+
+    @pyqtSlot(str, "QVariantList", result=bool)
+    def add_poi(self, name: str, coords: list[float]) -> bool:
+        """Add a POI."""
+        success = False
+        try:
+            add_poi(name, (coords[0], coords[1]))
+            self._emit_pois()
+            success = True
+        except Exception:
+            logging.exception("Error adding POI")
+        return success
+
+    @pyqtSlot(str, result=bool)
+    def remove_poi(self, name: str) -> bool:
+        """Remove a POI."""
+        success = False
+        try:
+            remove_poi(name)
+            self._emit_pois()
+            success = True
+        except Exception:
+            logging.exception("Error removing POI")
+        return success

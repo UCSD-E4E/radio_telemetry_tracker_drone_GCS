@@ -39,6 +39,7 @@ frontend/build/
 .env.development.local
 .env.test.local
 .env.production.local
+project-lock.json
 
 # IDEs and editors
 .idea/
@@ -56,3 +57,4 @@ build/
 # Misc
 *.log
 .DS_Store
+tiles.db
