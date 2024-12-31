@@ -124,7 +124,7 @@ const ControlPanel = ({
   const controlPanelContent = (
     <>
       <div
-        className={`fixed top-5 right-5 bg-white bg-opacity-95 p-4 rounded-xl shadow-lg z-50 flex flex-col gap-3 min-w-[280px] backdrop-blur-md border border-gray-200 transition-all duration-300`}
+        className={`fixed top-5 right-5 bg-white bg-opacity-95 p-4 rounded-xl shadow-lg z-[2000] flex flex-col gap-3 min-w-[280px] backdrop-blur-md border border-gray-200 transition-all duration-300`}
       >
         {/* Header */}
         <div
