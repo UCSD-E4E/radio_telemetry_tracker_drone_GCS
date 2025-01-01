@@ -7,8 +7,6 @@ import sqlite3
 from http import HTTPStatus
 from pathlib import Path
 from typing import TypedDict
-import time
-from threading import Lock
 
 import requests
 from werkzeug.serving import WSGIRequestHandler
@@ -30,19 +28,25 @@ class MapSource(TypedDict):
     url_template: str
     attribution: str
 
+# Split the long attribution string
+SATELLITE_ATTRIBUTION = (
+    "© Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, "
+    "Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
+)
+
 MAP_SOURCES = {
-    'osm': MapSource(
-        id='osm',
-        name='OpenStreetMap',
-        url_template='https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-        attribution='© OpenStreetMap contributors'
+    "osm": MapSource(
+        id="osm",
+        name="OpenStreetMap",
+        url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        attribution="© OpenStreetMap contributors",
     ),
-    'satellite': MapSource(
-        id='satellite',
-        name='Satellite',
-        url_template='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attribution='© Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-    )
+    "satellite": MapSource(
+        id="satellite",
+        name="Satellite",
+        url_template="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attribution=SATELLITE_ATTRIBUTION,
+    ),
 }
 
 def init_db() -> None:
@@ -100,7 +104,7 @@ def get_tile_from_db(z: int, x: int, y: int, source: str) -> bytes | None:
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.execute(
             "SELECT data FROM tiles WHERE z = ? AND x = ? AND y = ? AND source = ?",
-            (z, x, y, source)
+            (z, x, y, source),
         )
         row = cursor.fetchone()
         return row[0] if row else None
@@ -110,7 +114,7 @@ def save_tile_to_db(z: int, x: int, y: int, source: str, data: bytes) -> None:
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
             "INSERT OR REPLACE INTO tiles (z, x, y, source, data) VALUES (?, ?, ?, ?, ?)",
-            (z, x, y, source, data)
+            (z, x, y, source, data),
         )
         conn.commit()
 
@@ -140,7 +144,7 @@ def fetch_tile(z: int, x: int, y: int, source: str) -> bytes | None:
         return None
 
     try:
-        url = MAP_SOURCES[source]['url_template'].format(z=z, x=x, y=y)
+        url = MAP_SOURCES[source]["url_template"].format(z=z, x=x, y=y)
         headers = {
             "User-Agent": "RTT-Drone-GCS/1.0",
             "Accept": "image/png",
@@ -154,7 +158,14 @@ def fetch_tile(z: int, x: int, y: int, source: str) -> bytes | None:
         return None
     return response.content
 
-def get_tile(z: int, x: int, y: int, source_id: str = 'osm', offline: bool = False) -> bytes | None:
+def get_tile(
+    z: int,
+    x: int,
+    y: int,
+    source_id: str = "osm",
+    *,  # Make offline a keyword-only argument
+    offline: bool = False,
+) -> bytes | None:
     """Get a map tile, either from cache or from the internet."""
     source = MAP_SOURCES.get(source_id)
     if not source:
@@ -166,30 +177,36 @@ def get_tile(z: int, x: int, y: int, source_id: str = 'osm', offline: bool = Fal
         conn.execute("PRAGMA journal_mode=WAL")  # Use Write-Ahead Logging
         conn.execute("PRAGMA synchronous=NORMAL")  # Reduce synchronous mode
         conn.execute("PRAGMA cache_size=-2000")  # Set cache size to 2MB
-        
+
         # Try to get from cache first
         cursor = conn.cursor()
         cursor.execute(
             "SELECT data FROM tiles WHERE z = ? AND x = ? AND y = ? AND source = ?",
-            (z, x, y, source_id)
+            (z, x, y, source_id),
         )
         row = cursor.fetchone()
         if row:
+            logger.info("Tile found in cache: z=%d, x=%d, y=%d, source=%s", z, x, y, source_id)
             return row[0]
 
         # If not in cache and offline mode, return None
         if offline:
+            logger.info("Tile not in cache and offline mode enabled: z=%d, x=%d, y=%d, source=%s", z, x, y, source_id)
             return None
 
         # Fetch from internet
+        logger.info("Fetching tile from internet: z=%d, x=%d, y=%d, source=%s", z, x, y, source_id)
         tile_data = fetch_tile(z, x, y, source_id)
         if tile_data:
             # Use executemany for better performance
             cursor.execute(
                 "INSERT OR REPLACE INTO tiles (z, x, y, source, data) VALUES (?, ?, ?, ?, ?)",
-                (z, x, y, source_id, tile_data)
+                (z, x, y, source_id, tile_data),
             )
             conn.commit()
+            logger.info("Tile saved to cache: z=%d, x=%d, y=%d, source=%s", z, x, y, source_id)
+        else:
+            logger.warning("Failed to fetch tile: z=%d, x=%d, y=%d, source=%s", z, x, y, source_id)
         return tile_data
 
 def start_tile_server() -> None:

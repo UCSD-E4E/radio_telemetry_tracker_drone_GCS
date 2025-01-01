@@ -39,7 +39,7 @@ frontend/build/
 .env.development.local
 .env.test.local
 .env.production.local
-project-lock.json
+package-lock.json
 
 # IDEs and editors
 .idea/

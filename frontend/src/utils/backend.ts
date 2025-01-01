@@ -14,7 +14,7 @@ export interface Signal<T> {
 }
 
 export interface Backend {
-    get_tile: (z: number, x: number, y: number, source: string, offline: boolean) => Promise<string>;
+    get_tile: (z: number, x: number, y: number, source: string, options: { offline: boolean }) => Promise<string>;
     get_tile_info: () => Promise<TileInfo>;
     clear_tile_cache: () => Promise<boolean>;
     get_pois: () => Promise<POI[]>;
@@ -23,6 +23,49 @@ export interface Backend {
     error_message: Signal<string>;
     tile_info_updated: Signal<TileInfo>;
     pois_updated: Signal<POI[]>;
+}
+
+// Add new interfaces for the drone and signal data
+export interface DroneData {
+    lat: number;
+    long: number;
+    altitude: number;
+    heading: number;
+    lastUpdate: number;  // timestamp
+}
+
+export interface PingData {
+    frequency: number;
+    amplitude: number;
+    lat: number;
+    long: number;
+    timestamp: number;
+}
+
+export interface LocEstData {
+    frequency: number;
+    lat: number;
+    long: number;
+    timestamp: number;
+}
+
+export interface FrequencyLayer {
+    frequency: number;
+    pings: PingData[];
+    locationEstimate: LocEstData | null;
+    visible: boolean;
+}
+
+// Extend the Backend interface with the new signal methods
+export interface DroneBackend extends Backend {
+    drone_data_updated: Signal<DroneData>;
+    ping_data_updated: Signal<PingData>;
+    loc_est_data_updated: Signal<LocEstData>;
+    update_drone_data: (data: DroneData) => Promise<boolean>;
+    add_ping: (data: PingData) => Promise<boolean>;
+    update_location_estimate: (data: LocEstData) => Promise<boolean>;
+    clear_frequency_data: (frequency: number) => Promise<boolean>;
+    clear_all_data: () => Promise<boolean>;
 }
 
 declare global {
@@ -34,13 +77,13 @@ declare global {
         qt: {
             webChannelTransport: unknown;
         };
-        backend: Backend;
+        backend: DroneBackend;
         backendLoaded: boolean;
-        pyqtApi: Backend;
+        pyqtApi: DroneBackend;
     }
 }
 
-export async function fetchBackend(): Promise<Backend> {
+export async function fetchBackend(): Promise<DroneBackend> {
     return new Promise((resolve) => {
         if (window.backend) {
             window.pyqtApi = window.backend;
