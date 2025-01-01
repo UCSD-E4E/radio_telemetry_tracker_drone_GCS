@@ -319,22 +319,6 @@ export const DataLayers: React.FC<DataLayersProps> = ({ map }) => {
         });
     }, [map, frequencyLayers, layerGroups, getAmplitudeRange]);
 
-    useEffect(() => {
-        if (!map) return;
-
-        // Add all layer groups to the map
-        Object.values(layerGroups).forEach(group => {
-            group.addTo(map);
-        });
-
-        // Cleanup function to remove layers when component unmounts
-        return () => {
-            Object.values(layerGroups).forEach(group => {
-                group.remove();
-            });
-        };
-    }, [map, layerGroups]);
-
     return (
         <div className="space-y-4">
             {/* Drone Info */}

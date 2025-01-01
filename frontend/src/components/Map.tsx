@@ -1,4 +1,4 @@
-import { useEffect, useState, createContext, useContext, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useState, createContext, useContext } from 'react';
 import { MapContainer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -28,30 +28,66 @@ interface MapProps {
 }
 
 // Helper component to initialize map and handle backend interactions
-const MapInitializer = ({
-  backendReady,
-  currentSource,
-  isOffline,
-  setActiveFetches,
-  tileLayer,
-  setTileLayer,
-  setBackendReadyState,
-  setTileInfo,
-  setInitializing,
-  setPois
-}: {
-  backendReady: boolean;
-  currentSource: MapSource;
-  isOffline: boolean;
-  setActiveFetches: Dispatch<SetStateAction<number>>;
-  tileLayer: L.TileLayer | null;
-  setTileLayer: Dispatch<SetStateAction<L.TileLayer | null>>;
-  setBackendReadyState: Dispatch<SetStateAction<boolean>>;
-  setTileInfo: Dispatch<SetStateAction<TileInfo | null>>;
-  setInitializing: Dispatch<SetStateAction<boolean>>;
-  setPois: Dispatch<SetStateAction<POI[]>>;
-}) => {
+const MapInitializer = () => {
   const map = useContext(MapContext);
+  const [backendReady, setBackendReadyState] = useState(false);
+  const [initializing, setInitializing] = useState(true);
+  const [currentSource, setCurrentSource] = useState<MapSource>(MAP_SOURCES[0]);
+  const [tileInfo, setTileInfo] = useState<TileInfo | null>(null);
+  const [tileLayer, setTileLayer] = useState<L.TileLayer | null>(null);
+  const [pois, setPois] = useState<POI[]>([]);
+  const [isOffline, setIsOffline] = useState(() => window.localStorage.getItem(OFFLINE_MODE_KEY) === 'true');
+  const [activeFetches, setActiveFetches] = useState(0);
+  const isFetching = activeFetches > 0;
+
+  // Save offline mode preference
+  useEffect(() => {
+    console.log('Setting offline mode:', isOffline);
+    window.localStorage.setItem(OFFLINE_MODE_KEY, isOffline.toString());
+  }, [isOffline]);
+
+  // Initialize offline mode from localStorage
+  useEffect(() => {
+    const savedOfflineMode = window.localStorage.getItem(OFFLINE_MODE_KEY) === 'true';
+    console.log('Initializing offline mode from storage:', savedOfflineMode);
+    setIsOffline(savedOfflineMode);
+  }, []);
+
+  useEffect(() => {
+    const initializeBackend = async () => {
+      if (!window.backend) {
+        console.debug('Backend not ready, retrying in 1s...');
+        const timer = setTimeout(initializeBackend, 1000);
+        return () => clearTimeout(timer);
+      }
+
+      try {
+        const info = await window.backend.get_tile_info();
+        const initialPois = await window.backend.get_pois();
+        setPois(initialPois);
+        setTileInfo(info || { total_tiles: 0, total_size_mb: 0 });
+
+        window.backend.pois_updated.connect(setPois);
+        window.backend.tile_info_updated.connect(setTileInfo);
+
+        setBackendReadyState(true);
+      } catch (error) {
+        console.error('Error initializing backend:', error);
+        setTileInfo({ total_tiles: 0, total_size_mb: 0 });
+      } finally {
+        setInitializing(false);
+      }
+    };
+
+    initializeBackend();
+
+    return () => {
+      if (window.backend) {
+        window.backend.pois_updated.disconnect(setPois);
+        window.backend.tile_info_updated.disconnect(setTileInfo);
+      }
+    };
+  }, [setPois, setTileInfo]);
 
   useEffect(() => {
     if (!map || !backendReady || !window.backend) return;
@@ -138,45 +174,58 @@ const MapInitializer = ({
     return () => {
       newTileLayer.remove();
     };
-  }, [map, backendReady, currentSource, isOffline, setActiveFetches, setTileLayer, tileLayer]);
+  }, [map, backendReady, currentSource, isOffline]);
 
-  useEffect(() => {
-    const initializeBackend = async () => {
-      if (!window.backend) {
-        console.debug('Backend not ready, retrying in 1s...');
-        const timer = setTimeout(initializeBackend, 1000);
-        return () => clearTimeout(timer);
-      }
+  return (
+    <>
+      {initializing ? (
+        <LoadingSpinner message="Initializing Map..." overlay={true} />
+      ) : (
+        <>
+          {/* Main sidebar */}
+          <div className="absolute top-0 right-0 h-full w-80 bg-white/95 shadow-lg z-[400] flex flex-col">
+            {/* Header */}
+            <div className="p-4 border-b border-gray-200">
+              <h1 className="text-xl font-semibold text-gray-800">RTT Drone GCS</h1>
+            </div>
 
-      try {
-        const info = await window.backend.get_tile_info();
-        const initialPois = await window.backend.get_pois();
-        setPois(initialPois);
-        setTileInfo(info || { total_tiles: 0, total_size_mb: 0 });
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto">
+              {/* Map Controls Section */}
+              <div className="p-4 border-b border-gray-200">
+                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Map Controls</h2>
+                <ControlPanel
+                  tileInfo={tileInfo}
+                  tileLayer={tileLayer}
+                  map={map}
+                  pois={pois}
+                  currentSource={currentSource}
+                  setCurrentSource={setCurrentSource}
+                  mapSources={MAP_SOURCES}
+                  isOffline={isOffline}
+                  setIsOffline={setIsOffline}
+                />
+              </div>
 
-        window.backend.pois_updated.connect(setPois);
-        window.backend.tile_info_updated.connect(setTileInfo);
+              {/* Data Layers Section */}
+              <div className="p-4">
+                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Data Layers</h2>
+                <DataLayers map={map} />
+              </div>
+            </div>
+          </div>
 
-        setBackendReadyState(true);
-      } catch (error) {
-        console.error('Error initializing backend:', error);
-        setTileInfo({ total_tiles: 0, total_size_mb: 0 });
-      } finally {
-        setInitializing(false);
-      }
-    };
-
-    initializeBackend();
-
-    return () => {
-      if (window.backend) {
-        window.backend.pois_updated.disconnect(setPois);
-        window.backend.tile_info_updated.disconnect(setTileInfo);
-      }
-    };
-  }, [setBackendReadyState, setInitializing, setPois, setTileInfo]);
-
-  return null;
+          {/* Loading indicator */}
+          {isFetching && !isOffline && (
+            <div className="absolute bottom-4 left-4 bg-white/95 px-3 py-2 rounded-lg shadow-md flex items-center gap-2 z-[1000]">
+              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-sm text-gray-700">Loading map tiles...</span>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
 };
 
 const ZoomControl = () => {
@@ -193,108 +242,24 @@ const ZoomControl = () => {
   );
 };
 
-const Map = ({ center, zoom }: MapProps) => {
-  const [backendReady, setBackendReadyState] = useState(false);
-  const [initializing, setInitializing] = useState(true);
-  const [currentSource, setCurrentSource] = useState<MapSource>(MAP_SOURCES[0]);
-  const [tileInfo, setTileInfo] = useState<TileInfo | null>(null);
-  const [tileLayer, setTileLayer] = useState<L.TileLayer | null>(null);
-  const [pois, setPois] = useState<POI[]>([]);
-  const [isOffline, setIsOffline] = useState(() => window.localStorage.getItem(OFFLINE_MODE_KEY) === 'true');
-  const [activeFetches, setActiveFetches] = useState(0);
-  const isFetching = activeFetches > 0;
-
-  // Save offline mode preference
-  useEffect(() => {
-    console.log('Setting offline mode:', isOffline);
-    window.localStorage.setItem(OFFLINE_MODE_KEY, isOffline.toString());
-  }, [isOffline]);
-
-  // Initialize offline mode from localStorage
-  useEffect(() => {
-    const savedOfflineMode = window.localStorage.getItem(OFFLINE_MODE_KEY) === 'true';
-    console.log('Initializing offline mode from storage:', savedOfflineMode);
-    setIsOffline(savedOfflineMode);
-  }, []);
-
-  return (
-    <div className="h-screen w-screen flex">
-      {/* Map Container */}
-      <div className="flex-1 relative">
-        <MapContainer
-          center={center}
-          zoom={zoom}
-          className="h-full w-full"
-          zoomControl={false}
-          attributionControl={false}
-        >
-          <MapProvider>
-            <MapInitializer
-              backendReady={backendReady}
-              currentSource={currentSource}
-              isOffline={isOffline}
-              setActiveFetches={setActiveFetches}
-              tileLayer={tileLayer}
-              setTileLayer={setTileLayer}
-              setBackendReadyState={setBackendReadyState}
-              setTileInfo={setTileInfo}
-              setInitializing={setInitializing}
-              setPois={setPois}
-            />
-          </MapProvider>
-          <ZoomControl />
-          <div className="absolute bottom-4 left-16 z-[400] bg-white/95 px-2 py-1 rounded text-xs text-gray-600">
-            © OpenStreetMap contributors
-          </div>
-        </MapContainer>
-
-        {/* Loading indicator */}
-        {isFetching && !isOffline && (
-          <div className="absolute bottom-4 left-4 bg-white/95 px-3 py-2 rounded-lg shadow-md flex items-center gap-2 z-[1000]">
-            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-sm text-gray-700">Loading map tiles...</span>
-          </div>
-        )}
+const Map = ({ center, zoom }: MapProps) => (
+  <div className="h-screen w-screen relative">
+    <MapContainer
+      center={center}
+      zoom={zoom}
+      className="h-full w-full"
+      zoomControl={false}
+      attributionControl={false}
+    >
+      <MapProvider>
+        <MapInitializer />
+      </MapProvider>
+      <ZoomControl />
+      <div className="absolute bottom-4 left-16 z-[400] bg-white/95 px-2 py-1 rounded text-xs text-gray-600">
+        © OpenStreetMap contributors
       </div>
-
-      {/* Side Panel */}
-      {!initializing ? (
-        <div className="w-80 bg-white shadow-lg z-[400] flex flex-col">
-          {/* Header */}
-          <div className="p-4 border-b border-gray-200">
-            <h1 className="text-xl font-semibold text-gray-800">RTT Drone GCS</h1>
-          </div>
-
-          {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto">
-            {/* Map Controls Section */}
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Map Controls</h2>
-              <ControlPanel
-                tileInfo={tileInfo}
-                tileLayer={tileLayer}
-                map={null}
-                pois={pois}
-                currentSource={currentSource}
-                setCurrentSource={setCurrentSource}
-                mapSources={MAP_SOURCES}
-                isOffline={isOffline}
-                setIsOffline={setIsOffline}
-              />
-            </div>
-
-            {/* Data Layers Section */}
-            <div className="p-4">
-              <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Data Layers</h2>
-              <DataLayers map={null} />
-            </div>
-          </div>
-        </div>
-      ) : (
-        <LoadingSpinner message="Initializing Map..." overlay={true} />
-      )}
-    </div>
-  );
-};
+    </MapContainer>
+  </div>
+);
 
 export default Map;
