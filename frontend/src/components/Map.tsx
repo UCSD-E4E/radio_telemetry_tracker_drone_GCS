@@ -28,17 +28,42 @@ interface MapProps {
 }
 
 // Helper component to initialize map and handle backend interactions
-const MapInitializer = () => {
+const MapInitializer = ({ onStateChange }: { 
+  onStateChange: (state: {
+    backendReady: boolean,
+    initializing: boolean,
+    currentSource: MapSource,
+    tileInfo: TileInfo | null,
+    tileLayer: L.TileLayer | null,
+    pois: POI[],
+    isOffline: boolean,
+    isFetching: boolean
+  }) => void
+}) => {
   const map = useContext(MapContext);
   const [backendReady, setBackendReadyState] = useState(false);
   const [initializing, setInitializing] = useState(true);
-  const [currentSource, setCurrentSource] = useState<MapSource>(MAP_SOURCES[0]);
+  const [currentSource] = useState<MapSource>(MAP_SOURCES[0]);
   const [tileInfo, setTileInfo] = useState<TileInfo | null>(null);
   const [tileLayer, setTileLayer] = useState<L.TileLayer | null>(null);
   const [pois, setPois] = useState<POI[]>([]);
   const [isOffline, setIsOffline] = useState(() => window.localStorage.getItem(OFFLINE_MODE_KEY) === 'true');
   const [activeFetches, setActiveFetches] = useState(0);
   const isFetching = activeFetches > 0;
+
+  // Notify parent of state changes
+  useEffect(() => {
+    onStateChange({
+      backendReady,
+      initializing,
+      currentSource,
+      tileInfo,
+      tileLayer,
+      pois,
+      isOffline,
+      isFetching
+    });
+  }, [backendReady, initializing, currentSource, tileInfo, tileLayer, pois, isOffline, isFetching, onStateChange]);
 
   // Save offline mode preference
   useEffect(() => {
@@ -182,39 +207,6 @@ const MapInitializer = () => {
         <LoadingSpinner message="Initializing Map..." overlay={true} />
       ) : (
         <>
-          {/* Main sidebar */}
-          <div className="absolute top-0 right-0 h-full w-80 bg-white/95 shadow-lg z-[400] flex flex-col">
-            {/* Header */}
-            <div className="p-4 border-b border-gray-200">
-              <h1 className="text-xl font-semibold text-gray-800">RTT Drone GCS</h1>
-            </div>
-
-            {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto">
-              {/* Map Controls Section */}
-              <div className="p-4 border-b border-gray-200">
-                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Map Controls</h2>
-                <ControlPanel
-                  tileInfo={tileInfo}
-                  tileLayer={tileLayer}
-                  map={map}
-                  pois={pois}
-                  currentSource={currentSource}
-                  setCurrentSource={setCurrentSource}
-                  mapSources={MAP_SOURCES}
-                  isOffline={isOffline}
-                  setIsOffline={setIsOffline}
-                />
-              </div>
-
-              {/* Data Layers Section */}
-              <div className="p-4">
-                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Data Layers</h2>
-                <DataLayers map={map} />
-              </div>
-            </div>
-          </div>
-
           {/* Loading indicator */}
           {isFetching && !isOffline && (
             <div className="absolute bottom-4 left-4 bg-white/95 px-3 py-2 rounded-lg shadow-md flex items-center gap-2 z-[1000]">
@@ -242,24 +234,79 @@ const ZoomControl = () => {
   );
 };
 
-const Map = ({ center, zoom }: MapProps) => (
-  <div className="h-screen w-screen relative">
-    <MapContainer
-      center={center}
-      zoom={zoom}
-      className="h-full w-full"
-      zoomControl={false}
-      attributionControl={false}
-    >
-      <MapProvider>
-        <MapInitializer />
-      </MapProvider>
-      <ZoomControl />
-      <div className="absolute bottom-4 left-16 z-[400] bg-white/95 px-2 py-1 rounded text-xs text-gray-600">
-        © OpenStreetMap contributors
+const Map = ({ center, zoom }: MapProps) => {
+  const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+  const [state, setState] = useState({
+    backendReady: false,
+    initializing: true,
+    currentSource: MAP_SOURCES[0],
+    tileInfo: null as TileInfo | null,
+    tileLayer: null as L.TileLayer | null,
+    pois: [] as POI[],
+    isOffline: window.localStorage.getItem(OFFLINE_MODE_KEY) === 'true',
+    isFetching: false
+  });
+
+  const handleMapMount = (map: L.Map) => {
+    setMapInstance(map);
+  };
+
+  return (
+    <div className="h-screen w-screen flex">
+      {/* Map Container */}
+      <div className="flex-1 relative">
+        <MapContainer
+          center={center}
+          zoom={zoom}
+          className="h-full w-full"
+          zoomControl={false}
+          attributionControl={false}
+          ref={handleMapMount}
+        >
+          <MapProvider>
+            <MapInitializer onStateChange={setState} />
+          </MapProvider>
+          <ZoomControl />
+          <div className="absolute bottom-4 left-16 z-[400] bg-white/95 px-2 py-1 rounded text-xs text-gray-600">
+            © OpenStreetMap contributors
+          </div>
+        </MapContainer>
       </div>
-    </MapContainer>
-  </div>
-);
+
+      {/* Control Panel */}
+      <div className="w-80 bg-white shadow-lg flex flex-col">
+        {/* Header */}
+        <div className="p-4 border-b border-gray-200">
+          <h1 className="text-xl font-semibold text-gray-800">RTT Drone GCS</h1>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Map Controls Section */}
+          <div className="p-4 border-b border-gray-200">
+            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Map Controls</h2>
+            <ControlPanel
+              tileInfo={state.tileInfo}
+              tileLayer={state.tileLayer}
+              map={mapInstance}
+              pois={state.pois}
+              currentSource={state.currentSource}
+              setCurrentSource={(source) => setState(prev => ({ ...prev, currentSource: source }))}
+              mapSources={MAP_SOURCES}
+              isOffline={state.isOffline}
+              setIsOffline={(offline) => setState(prev => ({ ...prev, isOffline: offline }))}
+            />
+          </div>
+
+          {/* Data Layers Section */}
+          <div className="p-4">
+            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Data Layers</h2>
+            <DataLayers map={mapInstance} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default Map;
