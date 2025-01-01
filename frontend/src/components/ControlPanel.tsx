@@ -68,13 +68,13 @@ const ControlPanel = ({
     try {
       const [lat, lng] = coordinates.split(',').map(coord => parseFloat(coord.trim()));
       if (isNaN(lat) || isNaN(lng)) {
-        showMessage('Invalid coordinates format. Use "latitude, longitude"', 'error');
+        showMessage('Please enter valid latitude and longitude values', 'error');
         return;
       }
       map.setView([lat, lng], map.getZoom());
       showMessage('Map centered on coordinates', 'success');
     } catch {
-      showMessage('Invalid coordinates format', 'error');
+      showMessage('Please enter valid coordinates', 'error');
     }
   };
 
@@ -124,17 +124,20 @@ const ControlPanel = ({
   const controlPanelContent = (
     <>
       <div
-        className={`fixed top-5 right-5 bg-white bg-opacity-95 p-4 rounded-xl shadow-lg z-[2000] flex flex-col gap-3 min-w-[280px] backdrop-blur-md border border-gray-200 transition-all duration-300`}
+        className={`fixed top-5 right-5 bg-white/95 p-5 rounded-2xl shadow-lg z-[2000] 
+        flex flex-col gap-4 min-w-[300px] backdrop-blur-md border border-gray-200/50 
+        transition-all duration-300 hover:shadow-xl`}
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between cursor-pointer"
+          className="flex items-center justify-between cursor-pointer group"
           onClick={() => setIsExpanded(!isExpanded)}
         >
           <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            🗺️ Map Controls
-            <span className="text-sm text-gray-500">
-              {isExpanded ? '▼' : '▶'}
+            <span className="bg-blue-500 text-white p-1.5 rounded-lg">🗺️</span>
+            Map Controls
+            <span className={`text-sm text-gray-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+              ▼
             </span>
           </h3>
         </div>
@@ -143,131 +146,168 @@ const ControlPanel = ({
         {isExpanded && (
           <Fragment>
             {/* Map Source Selector */}
-            <div className="flex gap-2 items-center">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700">Map Source</label>
               <select
                 value={currentSource.id}
                 onChange={(e) => handleMapSourceChange(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg 
+                focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
               >
                 {mapSources.map(source => (
-                  <option key={source.id} value={source.id}>
-                    {source.name}
-                  </option>
+                  <option key={source.id} value={source.id}>{source.name}</option>
                 ))}
               </select>
             </div>
 
             {/* Go to Coordinates */}
-            <div className="flex gap-2 items-center">
-              <input
-                type="text"
-                placeholder="lat, lng (e.g. 32.88, -117.23)"
-                value={coordinates}
-                onChange={(e) => setCoordinates(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-              />
-              <button
-                onClick={handleGoToCoordinates}
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Go
-              </button>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700">Go to Location</label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="Latitude"
+                  value={coordinates.split(',')[0] || ''}
+                  onChange={(e) => setCoordinates(`${e.target.value},${coordinates.split(',')[1] || ''}`)}
+                  className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg
+                  focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                />
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="Longitude"
+                  value={coordinates.split(',')[1] || ''}
+                  onChange={(e) => setCoordinates(`${coordinates.split(',')[0] || ''},${e.target.value}`)}
+                  className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg
+                  focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                />
+                <button
+                  onClick={handleGoToCoordinates}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 
+                  transition-colors shadow-sm hover:shadow-md disabled:opacity-50 
+                  disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  <span>📍</span> Go
+                </button>
+              </div>
             </div>
 
             {/* Add POI */}
-            <div className="flex gap-2 items-center">
-              <input
-                type="text"
-                placeholder="Add current location as POI"
-                value={poiName}
-                onChange={(e) => setPoiName(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 transition"
-              />
-              <button
-                onClick={handleAddPOI}
-                disabled={isAddingPOI || !poiName.trim()}
-                className={`px-4 py-2 rounded-md text-white transition ${
-                  isAddingPOI || !poiName.trim()
-                    ? 'bg-green-300 cursor-wait'
-                    : 'bg-green-500 hover:bg-green-600'
-                }`}
-              >
-                {isAddingPOI ? 'Adding...' : '📍 Add'}
-              </button>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700">Add Point of Interest</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Name this location"
+                  value={poiName}
+                  onChange={(e) => setPoiName(e.target.value)}
+                  className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg
+                  focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                />
+                <button
+                  onClick={handleAddPOI}
+                  disabled={isAddingPOI || !poiName.trim()}
+                  className={`px-4 py-2 rounded-lg text-white transition-all shadow-sm 
+                  hover:shadow-md flex items-center gap-2 ${
+                    isAddingPOI || !poiName.trim()
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-green-500 hover:bg-green-600'
+                  }`}
+                >
+                  {isAddingPOI ? 'Adding...' : '📍 Add'}
+                </button>
+              </div>
             </div>
 
             {/* POI List */}
             {pois.length > 0 && (
-              <div className="bg-gray-100 rounded-md p-2 max-h-48 overflow-y-auto">
-                {pois.map((poi) => (
-                  <div
-                    key={poi.name}
-                    className="flex justify-between items-center p-2 hover:bg-gray-200 rounded-md transition"
-                  >
-                    <span
-                      onClick={() => goToPOI(poi.coords)}
-                      className="cursor-pointer text-gray-700 flex items-center gap-2"
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">Saved Locations</label>
+                <div className="bg-gray-50 rounded-lg p-2 max-h-48 overflow-y-auto">
+                  {pois.map((poi) => (
+                    <div
+                      key={poi.name}
+                      className="group flex justify-between items-center p-2.5 hover:bg-white 
+                      rounded-lg transition-colors border border-transparent hover:border-gray-200"
                     >
-                      📍 {poi.name}
-                    </span>
-                    <button
-                      onClick={() => handleRemovePOI(poi.name)}
-                      className="text-red-500 hover:text-red-700 transition"
-                      aria-label={`Remove ${poi.name}`}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
+                      <button
+                        onClick={() => goToPOI(poi.coords)}
+                        className="flex items-center gap-2 text-gray-700 hover:text-blue-600 transition-colors"
+                      >
+                        <span className="text-blue-500">📍</span> {poi.name}
+                      </button>
+                      <button
+                        onClick={() => handleRemovePOI(poi.name)}
+                        className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 
+                        transition-all hover:scale-110"
+                        title={`Remove ${poi.name}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* Clear Cache */}
-            <button
-              onClick={handleClearCache}
-              disabled={isClearing}
-              title="Clear all cached map tiles"
-              className={`mt-2 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition disabled:bg-gray-400 disabled:cursor-not-allowed`}
-            >
-              {isClearing ? 'Clearing...' : '🗑️ Clear Cache'}
-            </button>
+            {/* Settings Section */}
+            <div className="space-y-3 pt-2 border-t border-gray-200">
+              {/* Offline Mode Toggle */}
+              <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium text-gray-700">Offline Mode</span>
+                  <span className="text-xs text-gray-500">Use cached map tiles only</span>
+                </div>
+                <button
+                  onClick={() => setIsOffline(!isOffline)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                    ${isOffline ? 'bg-blue-500' : 'bg-gray-300'}`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                      ${isOffline ? 'translate-x-6' : 'translate-x-1'}`}
+                  />
+                </button>
+              </div>
 
-            {/* Message */}
+              {/* Cache Info & Clear Cache */}
+              {tileInfo && (
+                <div className="flex flex-col gap-2">
+                  <div className="p-2 bg-gray-50 rounded-lg text-sm text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <span className="text-blue-500">📦</span>
+                      <span>{tileInfo.total_tiles} cached tiles</span>
+                      <span className="text-gray-400">•</span>
+                      <span>{tileInfo.total_size_mb.toFixed(1)} MB</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleClearCache}
+                    disabled={isClearing}
+                    className="w-full px-3 py-1.5 text-sm border border-gray-300 text-gray-600 
+                    rounded-lg hover:bg-gray-50 hover:text-red-600 hover:border-red-200
+                    transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed 
+                    disabled:text-gray-400 flex items-center justify-center gap-2"
+                  >
+                    {isClearing ? 'Clearing...' : 'Clear cached tiles'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Message Toast */}
             {message && (
               <div
-                className={`mt-2 p-3 rounded-md flex items-center gap-2 text-sm ${
-                  message.type === 'success'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-red-100 text-red-800'
-                }`}
+                className={`p-3 rounded-lg flex items-center gap-2 text-sm animate-fade-in
+                  ${message.type === 'success'
+                    ? 'bg-green-50 text-green-800 border border-green-200'
+                    : 'bg-red-50 text-red-800 border border-red-200'
+                  }`}
               >
                 {message.type === 'success' ? '✅' : '❌'} {message.text}
               </div>
             )}
-
-            {/* Tile Info */}
-            {tileInfo && (
-              <div className="mt-2 p-2 bg-gray-100 rounded-md text-sm text-gray-600 flex items-center gap-2">
-                📦 <span>
-                  {tileInfo.total_tiles} tiles ({tileInfo.total_size_mb.toFixed(1)} MB)
-                </span>
-              </div>
-            )}
-
-            {/* Offline Mode */}
-            <div className="flex items-center justify-between mt-2 p-2 bg-gray-100 rounded-md">
-              <span className="text-gray-700">Offline Mode</span>
-              <button
-                onClick={() => setIsOffline(!isOffline)}
-                className={`px-3 py-1 rounded-md transition-colors ${
-                  isOffline
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-300 text-gray-700'
-                }`}
-              >
-                {isOffline ? 'On' : 'Off'}
-              </button>
-            </div>
           </Fragment>
         )}
       </div>

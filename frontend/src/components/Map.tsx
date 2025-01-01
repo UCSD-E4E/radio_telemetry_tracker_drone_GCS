@@ -92,25 +92,49 @@ const MapInitializer = () => {
         createTile(coords: L.Coords, done: L.DoneCallback): HTMLImageElement {
           const img = document.createElement('img');
           img.setAttribute('role', 'presentation');
-
-          setActiveFetches(prev => prev + 1);
-          window.backend
-            .get_tile(coords.z, coords.x, coords.y, currentSource.id, isOffline)
-            .then((data: string) => {
+          
+          // Add loading priority
+          img.setAttribute('loading', 'high');
+          img.setAttribute('decoding', 'async');
+          
+          // Implement tile loading queue
+          const priority = this._getZoomForUrl() === coords.z ? 1 : 0;
+          
+          const loadTile = async () => {
+            try {
+              setActiveFetches(prev => prev + 1);
+              const data = await window.backend.get_tile(
+                coords.z, 
+                coords.x, 
+                coords.y, 
+                currentSource.id, 
+                isOffline
+              );
+              
               if (data) {
-                img.src = `data:image/png;base64,${data}`;
-                done(undefined, img);
+                const blob = await fetch(`data:image/png;base64,${data}`).then(r => r.blob());
+                const url = URL.createObjectURL(blob);
+                img.src = url;
+                img.onload = () => {
+                  URL.revokeObjectURL(url);
+                  done(undefined, img);
+                };
               } else {
                 done(new Error('Tile not available'), img);
               }
-            })
-            .catch((error: Error) => {
+            } catch (error) {
               console.error('Error loading tile:', error);
-              done(error, img);
-            })
-            .finally(() => {
+              done(error instanceof Error ? error : new Error(String(error)), img);
+            } finally {
               setActiveFetches(prev => prev - 1);
-            });
+            }
+          };
+
+          if (priority === 1) {
+            loadTile();
+          } else {
+            setTimeout(loadTile, 100);
+          }
 
           return img;
         }

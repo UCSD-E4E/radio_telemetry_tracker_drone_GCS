@@ -23,11 +23,6 @@ logger = logging.getLogger(__name__)
 # Database configuration
 DB_PATH = Path(__file__).parent.parent / "tiles.db"
 
-# Rate limiting configuration
-RATE_LIMIT = 0.3  # seconds between requests
-last_request_time = 0
-request_lock = Lock()
-
 class MapSource(TypedDict):
     """Map source configuration."""
     id: str
@@ -161,15 +156,18 @@ def fetch_tile(z: int, x: int, y: int, source: str) -> bytes | None:
 
 def get_tile(z: int, x: int, y: int, source_id: str = 'osm', offline: bool = False) -> bytes | None:
     """Get a map tile, either from cache or from the internet."""
-    global last_request_time
-    
     source = MAP_SOURCES.get(source_id)
     if not source:
         logger.error("Invalid map source: %s", source_id)
         return None
 
-    # Try to get from cache first
-    with sqlite3.connect(DB_PATH) as conn:
+    # Use connection pooling with context manager
+    with sqlite3.connect(DB_PATH, timeout=1) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")  # Use Write-Ahead Logging
+        conn.execute("PRAGMA synchronous=NORMAL")  # Reduce synchronous mode
+        conn.execute("PRAGMA cache_size=-2000")  # Set cache size to 2MB
+        
+        # Try to get from cache first
         cursor = conn.cursor()
         cursor.execute(
             "SELECT data FROM tiles WHERE z = ? AND x = ? AND y = ? AND source = ?",
@@ -179,28 +177,19 @@ def get_tile(z: int, x: int, y: int, source_id: str = 'osm', offline: bool = Fal
         if row:
             return row[0]
 
-    # If not in cache and offline mode, return None
-    if offline:
-        return None
+        # If not in cache and offline mode, return None
+        if offline:
+            return None
 
-    # Rate limit requests
-    with request_lock:
-        current_time = time.time()
-        time_since_last = current_time - last_request_time
-        if time_since_last < RATE_LIMIT:
-            time.sleep(RATE_LIMIT - time_since_last)
-        last_request_time = time.time()
-
-        # Fetch from internet using existing fetch_tile function
+        # Fetch from internet
         tile_data = fetch_tile(z, x, y, source_id)
         if tile_data:
-            with sqlite3.connect(DB_PATH) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO tiles (z, x, y, source, data) VALUES (?, ?, ?, ?, ?)",
-                    (z, x, y, source_id, tile_data)
-                )
-                conn.commit()
+            # Use executemany for better performance
+            cursor.execute(
+                "INSERT OR REPLACE INTO tiles (z, x, y, source, data) VALUES (?, ?, ?, ?, ?)",
+                (z, x, y, source_id, tile_data)
+            )
+            conn.commit()
         return tile_data
 
 def start_tile_server() -> None:
