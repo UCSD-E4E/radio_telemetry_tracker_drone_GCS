@@ -38,6 +38,10 @@ export default [
         matchMedia: 'readonly',
         reportError: 'readonly',
         HTMLImageElement: 'readonly',
+        HTMLDivElement: 'readonly',
+        MouseEvent: 'readonly',
+        CustomEvent: 'readonly',
+        EventListener: 'readonly',
       },
     },
     plugins: {

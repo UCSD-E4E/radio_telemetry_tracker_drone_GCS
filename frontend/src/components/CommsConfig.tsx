@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, MouseEvent } from 'react';
 
 interface CommsConfigProps {
   onConnect: () => void;
@@ -7,7 +7,7 @@ interface CommsConfigProps {
 const InfoTooltip = ({ text }: { text: string }) => {
   const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
 
-  const updatePosition = (e: React.MouseEvent<HTMLDivElement>) => {
+  const updatePosition = (e: MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setTooltipPosition({
       top: rect.top - 5,
@@ -51,6 +51,10 @@ export const CommsConfig: React.FC<CommsConfigProps> = ({ onConnect }) => {
   const [maxRetries, setMaxRetries] = useState<number>(3);
   const [showCustomBaudRate, setShowCustomBaudRate] = useState(false);
   const [customBaudRateInput, setCustomBaudRateInput] = useState('');
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<string>('');
 
   // Get list of available serial ports
   useEffect(() => {
@@ -85,11 +89,24 @@ export const CommsConfig: React.FC<CommsConfigProps> = ({ onConnect }) => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!window.backend) return;
+    
+    const handleStatus = (status: string) => {
+        setConnectionStatus(status);
+    };
+    
+    window.backend.connection_status.connect(handleStatus);
+    return () => {
+        window.backend.connection_status.disconnect(handleStatus);
+    };
+  }, []);
+
   const handleConnect = async () => {
     if (!window.backend) return;
+    setIsConnecting(true);
 
-    try {
-      const config = {
+    const config = {
         interface_type: interfaceType,
         port: interfaceType === 'serial' ? selectedPort : null,
         baudrate: interfaceType === 'serial' ? baudRate : undefined,
@@ -98,15 +115,22 @@ export const CommsConfig: React.FC<CommsConfigProps> = ({ onConnect }) => {
         server_mode: interfaceType === 'simulated' ? serverMode : undefined,
         ack_timeout: ackTimeout,
         max_retries: maxRetries,
-      };
+    };
 
-      const success = await window.backend.initialize_comms(config);
-      if (success) {
+    const handleError = (message: string) => {
+        setIsConnecting(false);
+        setErrorMessage(message);
+        setShowErrorModal(true);
+    };
+    window.backend.error_message.connect(handleError);
+
+    const success = await window.backend.initialize_comms(config);
+    if (success) {
         onConnect();
-      }
-    } catch (error) {
-      console.error('Error initializing comms:', error);
     }
+
+    window.backend.error_message.disconnect(handleError);
+    setIsConnecting(false);
   };
 
   const handleCustomBaudRate = () => {
@@ -244,8 +268,20 @@ export const CommsConfig: React.FC<CommsConfigProps> = ({ onConnect }) => {
                   className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
                 />
                 <span className="text-sm font-medium text-gray-700">Server Mode</span>
-                <InfoTooltip text="One device must be server, one must be client. Enable if the hardware config on the Field Device Software is set to client mode oppose to server mode." />
+                <InfoTooltip text="One device must be server, one must be client. Enable if the hardware config on the Field Device Software is set to client mode oppose to server mode. WARNING: Program will freeze while waiting for incoming connection!" />
               </label>
+              {serverMode && (
+                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-5 h-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <p className="text-sm text-yellow-700">
+                      Warning: The program will freeze while waiting for an incoming connection. Make sure the client device is ready before connecting.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -354,10 +390,62 @@ export const CommsConfig: React.FC<CommsConfigProps> = ({ onConnect }) => {
       {/* Connect Button */}
       <button
         onClick={handleConnect}
-        className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+        disabled={isConnecting}
+        className={`w-full px-4 py-2 ${
+            isConnecting 
+                ? 'bg-blue-400 cursor-wait' 
+                : 'bg-blue-500 hover:bg-blue-600'
+        } text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors`}
       >
-        Connect
+        {isConnecting ? (
+            <div className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle 
+                        className="opacity-25" 
+                        cx="12" 
+                        cy="12" 
+                        r="10" 
+                        stroke="currentColor" 
+                        strokeWidth="4"
+                        fill="none"
+                    />
+                    <path 
+                        className="opacity-75" 
+                        fill="currentColor" 
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                </svg>
+                {connectionStatus || 'Connecting...'}
+            </div>
+        ) : (
+            'Connect'
+        )}
       </button>
+
+      {/* Error Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999]">
+          <div className="bg-white rounded-lg p-6 w-96 max-w-[90%] space-y-4">
+            <div className="flex items-start gap-2">
+              <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3 className="text-lg font-medium text-gray-900">Connection Status</h3>
+            </div>
+            <div className="text-sm text-gray-600 whitespace-pre-line">
+              {errorMessage}
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowErrorModal(false)}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -9,7 +9,12 @@ from typing import Any
 
 import serial.tools.list_ports
 from PyQt6.QtCore import QObject, QVariant, pyqtSignal, pyqtSlot
-from radio_telemetry_tracker_drone_comms_package import DroneComms, RadioConfig
+from radio_telemetry_tracker_drone_comms_package import (
+    DroneComms,
+    RadioConfig,
+    SyncRequestData,
+    SyncResponseData,
+)
 
 from radio_telemetry_tracker_drone_gcs.drone_data import DroneData, DroneDataManager, LocEstData, PingData
 from radio_telemetry_tracker_drone_gcs.tile_server import (
@@ -37,6 +42,8 @@ class Bridge(QObject):
     ping_data_updated = pyqtSignal(QVariant)
     loc_est_data_updated = pyqtSignal(QVariant)
 
+    connection_status = pyqtSignal(str)  # Add new signal
+
     def __init__(self) -> None:
         """Initialize the bridge."""
         super().__init__()
@@ -60,22 +67,102 @@ class Bridge(QObject):
             all_ports = list(serial.tools.list_ports.comports())
             logging.info("Found %d serial ports", len(all_ports))
             for port in all_ports:
-                logging.info("Port: %s, Description: %s, Hardware ID: %s",
-                           port.device, port.description, port.hwid)
+                logging.info("Port: %s, Description: %s, Hardware ID: %s", port.device, port.description, port.hwid)
 
             # Extract just the device names and convert to list
             ports = [str(port.device) for port in all_ports]
             logging.info("Returning port list: %s", ports)
             # Return as a plain list - PyQt will handle the conversion
-            return ports
         except Exception:
             logging.exception("Error getting serial ports")
             return []
+        else:
+            return ports
+
+    def _get_error_message(self, error: Exception, radio_config: RadioConfig) -> str:
+        """Get appropriate error message based on the exception type."""
+        if isinstance(error, ConnectionRefusedError):
+            return (
+                "Connection refused by the target device.\n\n"
+                "This usually happens when:\n"
+                "1. The simulator is not running\n"
+                "2. The wrong TCP port was specified\n"
+                "3. The server/client mode settings don't match\n\n"
+                "Please ensure:\n"
+                "• The simulator is running\n"
+                "• The port number matches the simulator's port\n"
+                "• If you're in server mode, the simulator should be in client mode (and vice versa)"
+            )
+        if isinstance(error, TimeoutError):
+            mode = "client" if radio_config.server_mode else "server"
+            return (
+                f"Connection timed out while trying to connect in {mode} mode.\n\n"
+                "This usually happens when:\n"
+                "1. No device is listening on the specified port\n"
+                "2. The network connection is blocked\n"
+                "3. The wrong server/client mode is selected\n\n"
+                "Please ensure:\n"
+                "• The simulator is running and in the opposite mode\n"
+                "• The port is not blocked by a firewall\n"
+                "• The host address is correct"
+            )
+        if isinstance(error, ConnectionResetError):
+            return (
+                "The connection was reset by the remote device.\n\n"
+                "This usually happens when:\n"
+                "1. Both devices are in the same mode (both server or both client)\n"
+                "2. The remote device closed the connection\n\n"
+                "Please check the server/client mode settings on both devices."
+            )
+        if isinstance(error, serial.serialutil.SerialException):
+            if "Access is denied" in str(error):
+                return (
+                    "Could not access the serial port. Please ensure:\n\n"
+                    "1. The port is not in use by another application\n"
+                    "2. You have permission to access the port\n"
+                    "3. The device is properly connected\n\n"
+                    f"Technical details: {error!s}"
+                )
+            return f"Serial port error: {error!s}\n\nPlease check your connection settings and try again."
+        return f"Failed to start communications: {error!s}\n\nPlease check your settings and try again."
+
+    def _setup_connection(self, radio_config: RadioConfig) -> tuple[bool, str | None]:
+        """Set up the connection with the given radio configuration.
+
+        Returns:
+            tuple[bool, str | None]: (success, error_message if any)
+        """
+        try:
+            self._drone_comms.start()
+        except (ConnectionRefusedError, TimeoutError, ConnectionResetError,
+                serial.serialutil.SerialException, Exception) as e:
+            error_message = self._get_error_message(e, radio_config)
+            return False, error_message
+        else:
+            return True, None
+
+    def _handle_sync_request_error(self) -> bool:
+        """Handle errors during sync request.
+
+        Returns:
+            bool: False to indicate failure
+        """
+        self.error_message.emit(
+            "Connected to port but failed to synchronize with device.\n\n"
+            "Please ensure you're connecting to the correct device and try again.",
+        )
+        if self._drone_comms:
+            self._drone_comms.stop()
+            self._drone_comms = None
+        return False
 
     @pyqtSlot("QVariantMap", result=bool)
     def initialize_comms(self, config: dict[str, Any]) -> bool:
         """Initialize DroneComms with the given configuration."""
         try:
+            if config.get("server_mode"):
+                self.connection_status.emit("Waiting for incoming connection...")
+
             radio_config = RadioConfig(
                 interface_type=config["interface_type"],
                 port=config.get("port"),
@@ -85,18 +172,55 @@ class Bridge(QObject):
                 server_mode=config.get("server_mode", False),
             )
 
+            # Create DroneComms instance with callbacks
             self._drone_comms = DroneComms(
                 radio_config=radio_config,
-                ack_timeout=2.0,
-                max_retries=5,
+                ack_timeout=config.get("ack_timeout") / 1000.0,  # Convert from ms to seconds
+                max_retries=config.get("max_retries"),
+                on_ack_success=self._handle_ack_success,
             )
 
-            logging.info("DroneComms initialized successfully")
-        except Exception:
+            # Try to establish connection
+            success, error_message = self._setup_connection(radio_config)
+            if not success:
+                self.error_message.emit(error_message)
+                return False
+
+            # Register sync response handler
+            self._drone_comms.register_sync_response_handler(self._handle_sync_response, once=True)
+
+            try:
+                # Send sync request
+                sync_request = SyncRequestData()
+                self._sync_packet_id, _, _ = self._drone_comms.send_sync_request(sync_request)
+            except (ConnectionError, TimeoutError, serial.serialutil.SerialException):
+                return self._handle_sync_request_error()
+            else:
+                logging.info("DroneComms initialized and sync request sent")
+                return True
+
+        except Exception as e:
             logging.exception("Error initializing DroneComms")
+            self.error_message.emit(
+                "Failed to initialize communications.\n\n"
+                f"Error: {e!s}\n\n"
+                "Please check your settings and try again.",
+            )
             return False
-        else:
-            return True
+
+    def _handle_ack_success(self, packet_id: int) -> None:
+        """Handle successful packet acknowledgment."""
+        if packet_id == getattr(self, "_sync_packet_id", None):
+            logging.info("Sync request acknowledged")
+
+    def _handle_sync_response(self, data: SyncResponseData) -> None:
+        """Handle sync response from drone."""
+        if not data.success:
+            logging.warning("Sync warning - GPS not ready or initialization incomplete")
+            self.error_message.emit(
+                "Warning: GPS not ready or initialization failed. GPS data may arrive shortly. "
+                "If not, check field device software logs.",
+            )
 
     def _emit_tile_info(self) -> None:
         """Helper to emit tile info as QVariant."""
