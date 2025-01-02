@@ -56,6 +56,16 @@ export interface FrequencyLayer {
     visible: boolean;
 }
 
+// Add these interfaces near the top
+export interface CommsConfig {
+    interface_type: 'serial' | 'simulated';
+    port?: string | null;
+    baudrate?: number;
+    host?: string;
+    tcp_port?: number;
+    server_mode?: boolean;
+}
+
 // Extend the Backend interface with the new signal methods
 export interface DroneBackend extends Backend {
     drone_data_updated: Signal<DroneData>;
@@ -66,6 +76,8 @@ export interface DroneBackend extends Backend {
     update_location_estimate: (data: LocEstData) => Promise<boolean>;
     clear_frequency_data: (frequency: number) => Promise<boolean>;
     clear_all_data: () => Promise<boolean>;
+    get_serial_ports: () => Promise<string[]>;
+    initialize_comms: (config: CommsConfig) => Promise<boolean>;
 }
 
 declare global {

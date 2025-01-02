@@ -1,14 +1,18 @@
 """Bridge module for backend-frontend communication."""
+
 from __future__ import annotations
 
 import base64
 import logging
 import time
+from typing import Any
 
+import serial.tools.list_ports
 from PyQt6.QtCore import QObject, QVariant, pyqtSignal, pyqtSlot
+from radio_telemetry_tracker_drone_comms_package import DroneComms, RadioConfig
 
-from .drone_data import DroneData, DroneDataManager, LocEstData, PingData
-from .tile_server import (
+from radio_telemetry_tracker_drone_gcs.drone_data import DroneData, DroneDataManager, LocEstData, PingData
+from radio_telemetry_tracker_drone_gcs.tile_server import (
     add_poi,
     clear_tile_cache,
     get_pois,
@@ -44,6 +48,55 @@ class Bridge(QObject):
         self._drone_manager.drone_data_updated.connect(self.drone_data_updated.emit)
         self._drone_manager.ping_data_updated.connect(self.ping_data_updated.emit)
         self._drone_manager.loc_est_data_updated.connect(self.loc_est_data_updated.emit)
+
+        # DroneComms instance
+        self._drone_comms: DroneComms | None = None
+
+    @pyqtSlot(result="QVariantList")
+    def get_serial_ports(self) -> list[str]:
+        """Get list of available serial ports."""
+        try:
+            # Get detailed port information
+            all_ports = list(serial.tools.list_ports.comports())
+            logging.info("Found %d serial ports", len(all_ports))
+            for port in all_ports:
+                logging.info("Port: %s, Description: %s, Hardware ID: %s",
+                           port.device, port.description, port.hwid)
+
+            # Extract just the device names and convert to list
+            ports = [str(port.device) for port in all_ports]
+            logging.info("Returning port list: %s", ports)
+            # Return as a plain list - PyQt will handle the conversion
+            return ports
+        except Exception:
+            logging.exception("Error getting serial ports")
+            return []
+
+    @pyqtSlot("QVariantMap", result=bool)
+    def initialize_comms(self, config: dict[str, Any]) -> bool:
+        """Initialize DroneComms with the given configuration."""
+        try:
+            radio_config = RadioConfig(
+                interface_type=config["interface_type"],
+                port=config.get("port"),
+                baudrate=config.get("baudrate", 56700),
+                host=config.get("host", "localhost"),
+                tcp_port=config.get("tcp_port", 50000),
+                server_mode=config.get("server_mode", False),
+            )
+
+            self._drone_comms = DroneComms(
+                radio_config=radio_config,
+                ack_timeout=2.0,
+                max_retries=5,
+            )
+
+            logging.info("DroneComms initialized successfully")
+        except Exception:
+            logging.exception("Error initializing DroneComms")
+            return False
+        else:
+            return True
 
     def _emit_tile_info(self) -> None:
         """Helper to emit tile info as QVariant."""

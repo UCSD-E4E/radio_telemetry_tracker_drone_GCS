@@ -3,6 +3,7 @@ import { MapContainer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import ControlPanel from './ControlPanel';
+import CommsConfig from './CommsConfig';
 import LoadingSpinner from './LoadingSpinner';
 import { TileInfo, POI } from '../utils/backend';
 import type { ReactNode } from 'react';
@@ -43,13 +44,35 @@ const MapInitializer = ({ onStateChange }: {
   const map = useContext(MapContext);
   const [backendReady, setBackendReadyState] = useState(false);
   const [initializing, setInitializing] = useState(true);
-  const [currentSource] = useState<MapSource>(MAP_SOURCES[0]);
+  const [currentSource, setCurrentSource] = useState<MapSource>(MAP_SOURCES[0]);
   const [tileInfo, setTileInfo] = useState<TileInfo | null>(null);
   const [tileLayer, setTileLayer] = useState<L.TileLayer | null>(null);
   const [pois, setPois] = useState<POI[]>([]);
   const [isOffline, setIsOffline] = useState(() => window.localStorage.getItem(OFFLINE_MODE_KEY) === 'true');
   const [activeFetches, setActiveFetches] = useState(0);
   const isFetching = activeFetches > 0;
+
+  // Update currentSource when parent changes it
+  useEffect(() => {
+    const handleSourceChange = (source: MapSource) => {
+      setCurrentSource(source);
+    };
+    window.addEventListener('mapSourceChanged', ((e: CustomEvent<MapSource>) => handleSourceChange(e.detail)) as EventListener);
+    return () => {
+      window.removeEventListener('mapSourceChanged', ((e: CustomEvent<MapSource>) => handleSourceChange(e.detail)) as EventListener);
+    };
+  }, []);
+
+  // Update offline mode when parent changes it
+  useEffect(() => {
+    const handleOfflineChange = (offline: boolean) => {
+      setIsOffline(offline);
+    };
+    window.addEventListener('offlineModeChanged', ((e: CustomEvent<boolean>) => handleOfflineChange(e.detail)) as EventListener);
+    return () => {
+      window.removeEventListener('offlineModeChanged', ((e: CustomEvent<boolean>) => handleOfflineChange(e.detail)) as EventListener);
+    };
+  }, []);
 
   // Notify parent of state changes
   useEffect(() => {
@@ -246,6 +269,8 @@ const Map = ({ center, zoom }: MapProps) => {
     isOffline: window.localStorage.getItem(OFFLINE_MODE_KEY) === 'true',
     isFetching: false
   });
+  const [commsConnected, setCommsConnected] = useState(false);
+  const [activePanel, setActivePanel] = useState<'comms' | 'map'>('comms');
 
   const handleMapMount = (map: L.Map) => {
     setMapInstance(map);
@@ -280,29 +305,75 @@ const Map = ({ center, zoom }: MapProps) => {
           <h1 className="text-xl font-semibold text-gray-800">RTT Drone GCS</h1>
         </div>
 
+        {/* Navigation */}
+        <div className="flex border-b border-gray-200">
+          <button
+            className={`flex-1 px-4 py-2 text-sm font-medium ${
+              activePanel === 'comms'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setActivePanel('comms')}
+          >
+            Communications
+          </button>
+          <button
+            className={`flex-1 px-4 py-2 text-sm font-medium ${
+              activePanel === 'map'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setActivePanel('map')}
+          >
+            Map Controls
+          </button>
+        </div>
+
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
-          {/* Map Controls Section */}
-          <div className="p-4 border-b border-gray-200">
-            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Map Controls</h2>
-            <ControlPanel
-              tileInfo={state.tileInfo}
-              tileLayer={state.tileLayer}
-              map={mapInstance}
-              pois={state.pois}
-              currentSource={state.currentSource}
-              setCurrentSource={(source) => setState(prev => ({ ...prev, currentSource: source }))}
-              mapSources={MAP_SOURCES}
-              isOffline={state.isOffline}
-              setIsOffline={(offline) => setState(prev => ({ ...prev, isOffline: offline }))}
-            />
-          </div>
+          {activePanel === 'comms' ? (
+            /* Communications Panel */
+            <div className="p-4">
+              {!commsConnected ? (
+                <CommsConfig onConnect={() => setCommsConnected(true)} />
+              ) : (
+                <div className="text-sm text-green-600 p-2 bg-green-50 rounded-md">
+                  Connected to drone
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Map Controls Panel */
+            <>
+              <div className="p-4 border-b border-gray-200">
+                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Map Controls</h2>
+                <ControlPanel
+                  tileInfo={state.tileInfo}
+                  tileLayer={state.tileLayer}
+                  map={mapInstance}
+                  pois={state.pois}
+                  currentSource={state.currentSource}
+                  setCurrentSource={(source) => {
+                    setState(prev => ({ ...prev, currentSource: source }));
+                    // Dispatch custom event for map source change
+                    window.dispatchEvent(new CustomEvent('mapSourceChanged', { detail: source }));
+                  }}
+                  mapSources={MAP_SOURCES}
+                  isOffline={state.isOffline}
+                  setIsOffline={(offline) => {
+                    setState(prev => ({ ...prev, isOffline: offline }));
+                    // Dispatch custom event for offline mode change
+                    window.dispatchEvent(new CustomEvent('offlineModeChanged', { detail: offline }));
+                  }}
+                />
+              </div>
 
-          {/* Data Layers Section */}
-          <div className="p-4">
-            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Data Layers</h2>
-            <DataLayers map={mapInstance} />
-          </div>
+              <div className="p-4">
+                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Data Layers</h2>
+                <DataLayers map={mapInstance} />
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
