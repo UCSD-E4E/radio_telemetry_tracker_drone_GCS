@@ -50,9 +50,6 @@ export interface FrequencyLayer {
 
 // Extend the existing Backend interface
 interface Backend {
-    // ... existing methods ...
-    
-    // New methods for drone and signal data
     onDroneData: Signal<DroneData>;
     onPingData: Signal<PingData>;
     onLocEstData: Signal<LocEstData>;
