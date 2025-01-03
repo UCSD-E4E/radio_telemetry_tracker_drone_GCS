@@ -48,7 +48,10 @@ const MapInitializer = ({ onStateChange }: {
   const [tileInfo, setTileInfo] = useState<TileInfo | null>(null);
   const [tileLayer, setTileLayer] = useState<L.TileLayer | null>(null);
   const [pois, setPois] = useState<POI[]>([]);
-  const [isOffline, setIsOffline] = useState(() => window.localStorage.getItem(OFFLINE_MODE_KEY) === 'true');
+  const [isOffline, setIsOffline] = useState(() => {
+    const isConnectedToInternet = window.navigator.onLine;
+    return !isConnectedToInternet || window.localStorage.getItem(OFFLINE_MODE_KEY) === 'true';
+  });
   const [activeFetches, setActiveFetches] = useState(0);
   const isFetching = activeFetches > 0;
 
@@ -259,15 +262,18 @@ const ZoomControl = () => {
 
 const Map = ({ center, zoom }: MapProps) => {
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
-  const [state, setState] = useState({
-    backendReady: false,
-    initializing: true,
-    currentSource: MAP_SOURCES[0],
-    tileInfo: null as TileInfo | null,
-    tileLayer: null as L.TileLayer | null,
-    pois: [] as POI[],
-    isOffline: window.localStorage.getItem(OFFLINE_MODE_KEY) === 'true',
-    isFetching: false
+  const [state, setState] = useState(() => {
+    const isConnectedToInternet = window.navigator.onLine;
+    return {
+      backendReady: false,
+      initializing: true,
+      currentSource: MAP_SOURCES[0],
+      tileInfo: null as TileInfo | null,
+      tileLayer: null as L.TileLayer | null,
+      pois: [] as POI[],
+      isOffline: !isConnectedToInternet || window.localStorage.getItem(OFFLINE_MODE_KEY) === 'true',
+      isFetching: false
+    };
   });
   const [commsConnected, setCommsConnected] = useState(false);
   const [activePanel, setActivePanel] = useState<'comms' | 'map'>('comms');

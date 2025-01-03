@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import L from 'leaflet';
 import { TileInfo, POI } from '../utils/backend';
 import { MapSource } from '../utils/mapSources';
+import { useInternetStatus } from '../hooks/useInternetStatus';
 
 interface ControlPanelProps {
   tileInfo: TileInfo | null;
@@ -13,6 +14,7 @@ interface ControlPanelProps {
   mapSources: MapSource[];
   isOffline: boolean;
   setIsOffline: (offline: boolean) => void;
+  onOfflineModeChange?: (offline: boolean) => void;
 }
 
 const ControlPanel: React.FC<ControlPanelProps> = ({
@@ -24,11 +26,16 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   mapSources,
   isOffline,
   setIsOffline,
+  onOfflineModeChange,
 }) => {
   const [newPoiName, setNewPoiName] = useState('');
   const [showPoiForm, setShowPoiForm] = useState(false);
   const [editingPoi, setEditingPoi] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [showClearConfirmation, setShowClearConfirmation] = useState(false);
+  const [showOfflineWarning, setShowOfflineWarning] = useState(false);
+
+  const isConnectedToInternet = useInternetStatus();
 
   const handleAddPOI = async () => {
     if (!map || !window.backend || !newPoiName.trim()) return;
@@ -63,7 +70,20 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
 
   const handleClearTiles = async () => {
     if (!window.backend) return;
+    setShowClearConfirmation(false);
     await window.backend.clear_tile_cache();
+  };
+
+  const handleOfflineModeChange = (checked: boolean) => {
+    if (checked && !isConnectedToInternet) {
+      setIsOffline(true);
+      onOfflineModeChange?.(true);
+    } else if (!checked && !isConnectedToInternet) {
+      setShowOfflineWarning(true);
+    } else {
+      setIsOffline(checked);
+      onOfflineModeChange?.(checked);
+    }
   };
 
   return (
@@ -88,16 +108,21 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           <input
             type="checkbox"
             checked={isOffline}
-            onChange={(e) => setIsOffline(e.target.checked)}
+            onChange={(e) => handleOfflineModeChange(e.target.checked)}
             className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
           />
           Offline Mode
+          {!isConnectedToInternet && (
+            <span className="text-yellow-600 text-xs">
+              (No Internet Connection)
+            </span>
+          )}
         </label>
         <div className="mt-1 text-xs text-gray-500">
           {tileInfo && `${tileInfo.total_tiles} tiles (${tileInfo.total_size_mb.toFixed(1)} MB)`}
         </div>
         <button
-          onClick={handleClearTiles}
+          onClick={() => setShowClearConfirmation(true)}
           className="mt-2 w-full px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded hover:bg-red-50 transition-colors"
         >
           Clear Tile Cache
@@ -182,6 +207,67 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Clear Cache Confirmation Modal */}
+      {showClearConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999]">
+          <div className="bg-white rounded-lg p-6 w-96 max-w-[90%] space-y-4">
+            <div className="flex items-start gap-2">
+              <svg className="w-5 h-5 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <h3 className="text-lg font-medium text-gray-900">Clear Tile Cache?</h3>
+            </div>
+            <div className="text-sm text-gray-600">
+              Are you sure you want to clear the tile cache?
+              {isOffline && (
+                <div className="mt-2 text-yellow-600 bg-yellow-50 p-2 rounded">
+                  Warning: You are in offline mode. Clearing the cache will remove all map data until you go back online to redownload it.
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowClearConfirmation(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearTiles}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                Clear Cache
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Offline Warning Modal */}
+      {showOfflineWarning && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999]">
+          <div className="bg-white rounded-lg p-6 w-96 max-w-[90%] space-y-4">
+            <div className="flex items-start gap-2">
+              <svg className="w-5 h-5 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <h3 className="text-lg font-medium text-gray-900">No Internet Connection</h3>
+            </div>
+            <div className="text-sm text-gray-600">
+              You cannot switch to online mode because there is no internet connection available. Please check your connection and try again.
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowOfflineWarning(false)}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
