@@ -79,6 +79,7 @@ export interface DroneBackend extends Backend {
     get_serial_ports: () => Promise<string[]>;
     initialize_comms: (config: CommsConfig) => Promise<boolean>;
     connection_status: Signal<string>;
+    sync_timeout: Signal<void>;
 }
 
 declare global {

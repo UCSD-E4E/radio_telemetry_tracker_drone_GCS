@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 import serial.tools.list_ports
-from PyQt6.QtCore import QObject, QVariant, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QVariant, pyqtSignal, pyqtSlot, QTimer
 from radio_telemetry_tracker_drone_comms_package import (
     DroneComms,
     RadioConfig,
@@ -43,6 +43,7 @@ class Bridge(QObject):
     loc_est_data_updated = pyqtSignal(QVariant)
 
     connection_status = pyqtSignal(str)  # Add new signal
+    sync_timeout = pyqtSignal()  # Add new signal for sync timeout
 
     def __init__(self) -> None:
         """Initialize the bridge."""
@@ -172,11 +173,15 @@ class Bridge(QObject):
                 server_mode=config.get("server_mode", False),
             )
 
+            # Convert ack_timeout from ms to seconds
+            ack_timeout = config.get("ack_timeout", 1000) / 1000.0
+            max_retries = config.get("max_retries", 3)
+
             # Create DroneComms instance with callbacks
             self._drone_comms = DroneComms(
                 radio_config=radio_config,
-                ack_timeout=config.get("ack_timeout") / 1000.0,  # Convert from ms to seconds
-                max_retries=config.get("max_retries"),
+                ack_timeout=ack_timeout,
+                max_retries=max_retries,
                 on_ack_success=self._handle_ack_success,
             )
 
@@ -190,9 +195,17 @@ class Bridge(QObject):
             self._drone_comms.register_sync_response_handler(self._handle_sync_response, once=True)
 
             try:
-                # Send sync request
-                sync_request = SyncRequestData()
+                # Send sync request with timeout and retry settings
+                sync_request = SyncRequestData(
+                    ack_timeout=ack_timeout,
+                    max_retries=max_retries,
+                )
                 self._sync_packet_id, _, _ = self._drone_comms.send_sync_request(sync_request)
+                self.connection_status.emit("Waiting for drone to respond...")
+
+                # Start a timer to emit sync_timeout after ack_timeout * max_retries
+                total_timeout = ack_timeout * max_retries
+                QTimer.singleShot(int(total_timeout * 1000), self.sync_timeout.emit)
             except (ConnectionError, TimeoutError, serial.serialutil.SerialException):
                 return self._handle_sync_request_error()
             else:
@@ -221,6 +234,8 @@ class Bridge(QObject):
                 "Warning: GPS not ready or initialization failed. GPS data may arrive shortly. "
                 "If not, check field device software logs.",
             )
+        else:
+            self.connection_status.emit("Drone connected successfully")
 
     def _emit_tile_info(self) -> None:
         """Helper to emit tile info as QVariant."""

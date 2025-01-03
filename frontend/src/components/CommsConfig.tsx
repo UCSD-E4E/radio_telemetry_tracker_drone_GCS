@@ -45,16 +45,16 @@ export const CommsConfig: React.FC<CommsConfigProps> = ({ onConnect }) => {
   const [baudRate, setBaudRate] = useState<number>(57600);
   const [host, setHost] = useState<string>('localhost');
   const [tcpPort, setTcpPort] = useState<number>(50000);
-  const [serverMode, setServerMode] = useState<boolean>(false);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
-  const [ackTimeout, setAckTimeout] = useState<number>(1000);
-  const [maxRetries, setMaxRetries] = useState<number>(3);
+  const [ackTimeout, setAckTimeout] = useState<number>(2000);
+  const [maxRetries, setMaxRetries] = useState<number>(5);
   const [showCustomBaudRate, setShowCustomBaudRate] = useState(false);
   const [customBaudRateInput, setCustomBaudRateInput] = useState('');
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<string>('');
+  const [showCancelSync, setShowCancelSync] = useState(false);
 
   // Get list of available serial ports
   useEffect(() => {
@@ -94,17 +94,29 @@ export const CommsConfig: React.FC<CommsConfigProps> = ({ onConnect }) => {
     
     const handleStatus = (status: string) => {
         setConnectionStatus(status);
+        if (status === "Drone connected successfully") {
+            setIsConnecting(false);
+            onConnect();
+        }
+    };
+
+    const handleSyncTimeout = () => {
+        setShowCancelSync(true);
     };
     
     window.backend.connection_status.connect(handleStatus);
+    window.backend.sync_timeout.connect(handleSyncTimeout);
+
     return () => {
         window.backend.connection_status.disconnect(handleStatus);
+        window.backend.sync_timeout.disconnect(handleSyncTimeout);
     };
-  }, []);
+  }, [onConnect]);
 
   const handleConnect = async () => {
     if (!window.backend) return;
     setIsConnecting(true);
+    setShowCancelSync(false);
 
     const config = {
         interface_type: interfaceType,
@@ -112,25 +124,32 @@ export const CommsConfig: React.FC<CommsConfigProps> = ({ onConnect }) => {
         baudrate: interfaceType === 'serial' ? baudRate : undefined,
         host: interfaceType === 'simulated' ? host : undefined,
         tcp_port: interfaceType === 'simulated' ? tcpPort : undefined,
-        server_mode: interfaceType === 'simulated' ? serverMode : undefined,
+        server_mode: false,
         ack_timeout: ackTimeout,
         max_retries: maxRetries,
     };
 
     const handleError = (message: string) => {
         setIsConnecting(false);
+        setShowCancelSync(false);
         setErrorMessage(message);
         setShowErrorModal(true);
     };
     window.backend.error_message.connect(handleError);
 
     const success = await window.backend.initialize_comms(config);
-    if (success) {
-        onConnect();
+    if (!success) {
+        setIsConnecting(false);
+        setShowCancelSync(false);
     }
 
     window.backend.error_message.disconnect(handleError);
+  };
+
+  const handleCancel = () => {
     setIsConnecting(false);
+    setShowCancelSync(false);
+    setConnectionStatus('');
   };
 
   const handleCustomBaudRate = () => {
@@ -249,7 +268,7 @@ export const CommsConfig: React.FC<CommsConfigProps> = ({ onConnect }) => {
             <div>
               <div className="flex items-center gap-1 mb-2">
                 <label className="text-sm font-medium text-gray-700">TCP Port</label>
-                <InfoTooltip text="Network port for TCP connection. Default is 50000. Change only if the default port is in use or if connecting to a simulation using a different port." />
+                <InfoTooltip text="Network port for TCP connection. Default is 50000. Change only if the simulation is using a different port." />
               </div>
               <input
                 type="number"
@@ -258,30 +277,6 @@ export const CommsConfig: React.FC<CommsConfigProps> = ({ onConnect }) => {
                 className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="50000"
               />
-            </div>
-            <div className="pt-2">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={serverMode}
-                  onChange={(e) => setServerMode(e.target.checked)}
-                  className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
-                />
-                <span className="text-sm font-medium text-gray-700">Server Mode</span>
-                <InfoTooltip text="One device must be server, one must be client. Enable if the hardware config on the Field Device Software is set to client mode oppose to server mode. WARNING: Program will freeze while waiting for incoming connection!" />
-              </label>
-              {serverMode && (
-                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
-                  <div className="flex items-start gap-2">
-                    <svg className="w-5 h-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <p className="text-sm text-yellow-700">
-                      Warning: The program will freeze while waiting for an incoming connection. Make sure the client device is ready before connecting.
-                    </p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -387,58 +382,115 @@ export const CommsConfig: React.FC<CommsConfigProps> = ({ onConnect }) => {
         </div>
       )}
 
-      {/* Connect Button */}
-      <button
-        onClick={handleConnect}
-        disabled={isConnecting}
-        className={`w-full px-4 py-2 ${
-            isConnecting 
-                ? 'bg-blue-400 cursor-wait' 
-                : 'bg-blue-500 hover:bg-blue-600'
-        } text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors`}
-      >
-        {isConnecting ? (
-            <div className="flex items-center justify-center gap-2">
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle 
-                        className="opacity-25" 
-                        cx="12" 
-                        cy="12" 
-                        r="10" 
-                        stroke="currentColor" 
-                        strokeWidth="4"
-                        fill="none"
-                    />
-                    <path 
-                        className="opacity-75" 
-                        fill="currentColor" 
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                </svg>
-                {connectionStatus || 'Connecting...'}
+      {/* Connection Controls */}
+      <div className="space-y-3">
+        {/* Connection Status */}
+        {isConnecting && (
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-3">
+              <svg className="animate-spin h-5 w-5 text-blue-500" viewBox="0 0 24 24">
+                <circle 
+                    className="opacity-25" 
+                    cx="12" 
+                    cy="12" 
+                    r="10" 
+                    stroke="currentColor" 
+                    strokeWidth="4"
+                    fill="none"
+                />
+                <path 
+                    className="opacity-75" 
+                    fill="currentColor" 
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              <div className="flex-1">
+                <div className="font-medium text-blue-700">
+                  {connectionStatus || 'Connecting...'}
+                </div>
+                {connectionStatus === 'Waiting for drone to respond...' && (
+                  <div className="text-sm text-blue-600 mt-0.5">
+                    This may take a few seconds while we establish communication
+                  </div>
+                )}
+              </div>
             </div>
-        ) : (
-            'Connect'
+          </div>
         )}
-      </button>
+
+        {/* Buttons */}
+        <div className="flex gap-2">
+          {!isConnecting && (
+            <button
+              onClick={handleConnect}
+              className="flex-1 px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 font-medium"
+            >
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Connect
+              </div>
+            </button>
+          )}
+          {showCancelSync && (
+            <div className="flex flex-col gap-2 flex-1">
+              <button
+                onClick={handleCancel}
+                className="w-full px-4 py-3 text-red-600 bg-white border-2 border-red-600 rounded-lg hover:bg-red-50 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all duration-200 font-medium flex items-center justify-center gap-2"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Cancel Connection
+              </button>
+              <div className="text-sm text-gray-600 px-1">
+                Connection is taking longer than expected. You may cancel and try again.
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Success Message */}
+        {connectionStatus === "Drone connected successfully" && (
+          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center gap-2 text-green-700">
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span className="font-medium">Successfully connected to drone</span>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Error Modal */}
       {showErrorModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999]">
-          <div className="bg-white rounded-lg p-6 w-96 max-w-[90%] space-y-4">
-            <div className="flex items-start gap-2">
-              <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <h3 className="text-lg font-medium text-gray-900">Connection Status</h3>
-            </div>
-            <div className="text-sm text-gray-600 whitespace-pre-line">
-              {errorMessage}
+          <div className="bg-white rounded-lg p-6 w-96 max-w-[90%] space-y-4 shadow-xl">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0">
+                <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Connection Error</h3>
+                <div className="mt-2 text-sm text-gray-600 whitespace-pre-line">
+                  {errorMessage}
+                </div>
+              </div>
             </div>
             <div className="flex justify-end">
               <button
                 onClick={() => setShowErrorModal(false)}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
               >
                 Close
               </button>
