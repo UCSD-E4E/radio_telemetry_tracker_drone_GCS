@@ -98,18 +98,42 @@ class CommunicationBridge(QObject):
             if config.get("server_mode"):
                 self.connection_status.emit("Waiting for incoming connection...")
 
+            # Log the config for debugging
+            logging.info("Initializing comms with config: %s", config)
+
+            # For serial connections, ensure port is specified
+            if config["interface_type"] == "serial" and not config.get("port"):
+                error_msg = (
+                    "No serial port selected.\n\n"
+                    "Please select a port from the dropdown menu before connecting."
+                )
+                self.error_message.emit(error_msg)
+                return False
+
             radio_config = RadioConfig(
                 interface_type=config["interface_type"],
                 port=config.get("port"),
-                baudrate=config.get("baudrate", 56700),
+                baudrate=config.get("baudrate"),
                 host=config.get("host", "localhost"),
-                tcp_port=config.get("tcp_port", 50000),
+                tcp_port=config.get("tcp_port"),
                 server_mode=config.get("server_mode", False),
             )
 
-            # Convert ack_timeout from ms to s
-            ack_timeout_s = config.get("ack_timeout", 1000) / 1000.0
-            max_retries = config.get("max_retries", 3)
+            # Log the radio config for debugging
+            logging.info("Created radio config: %s", {
+                "interface_type": radio_config.interface_type,
+                "port": radio_config.port,
+                "baudrate": radio_config.baudrate,
+                "host": radio_config.host,
+                "tcp_port": radio_config.tcp_port,
+                "server_mode": radio_config.server_mode,
+            })
+
+            # Get timeout values from config
+            ack_timeout_s = float(config["ack_timeout"])  # Must be provided by frontend
+            max_retries = int(config["max_retries"])  # Must be provided by frontend
+
+            logging.info("Using timeout values: ack_timeout=%s seconds, max_retries=%d", ack_timeout_s, max_retries)
 
             self._drone_comms = DroneComms(
                 radio_config=radio_config,
@@ -134,18 +158,29 @@ class CommunicationBridge(QObject):
 
                 # Start a timer to emit sync_timeout if no response
                 total_timeout = ack_timeout_s * max_retries
-                QTimer.singleShot(int(total_timeout * 1000), self.sync_timeout.emit)
+                logging.info("Setting sync timeout for %.1f seconds", total_timeout)
+                QTimer.singleShot(int(total_timeout * 1000), lambda: self._handle_sync_timeout())
 
-            except (ConnectionError, TimeoutError, serial.serialutil.SerialException):
+            except (ConnectionError, TimeoutError, OSError):
                 return self._handle_sync_request_error()
 
             logging.info("DroneComms initialized and sync request sent")
 
         except Exception as ex:
             logging.exception("Error initializing DroneComms")
-            self.error_message.emit(
-                f"Failed to initialize communications.\n\nError: {ex}\n\nCheck your settings and try again.",
-            )
+            # Check if there's a more specific error message from a lower level
+            if isinstance(ex.__cause__, (
+                ConnectionRefusedError,
+                TimeoutError,
+                ConnectionResetError,
+                serial.serialutil.SerialException,
+            )):
+                error_msg = self._get_error_message(ex.__cause__, radio_config)
+                self.error_message.emit(error_msg)
+            else:
+                self.error_message.emit(
+                    f"Failed to initialize communications.\n\nError: {ex}\n\nCheck your settings and try again.",
+                )
             return False
         else:
             return True
@@ -163,57 +198,38 @@ class CommunicationBridge(QObject):
             TimeoutError,
             ConnectionResetError,
             serial.serialutil.SerialException,
-            Exception,
         ) as e:
             error_message = self._get_error_message(e, radio_config)
             return False, error_message
-        return True, None
+        except OSError as e:
+            # For other exceptions, check if there's a more specific error as the cause
+            if isinstance(e.__cause__, (
+                ConnectionRefusedError,
+                TimeoutError,
+                ConnectionResetError,
+                serial.serialutil.SerialException,
+            )):
+                error_message = self._get_error_message(e.__cause__, radio_config)
+            else:
+                error_message = f"Communication error: {e!s}"
+            return False, error_message
+        else:
+            return True, None
 
     def _get_error_message(self, error: Exception, radio_config: RadioConfig) -> str:
-        """Return a user-friendly error message based on the exception type."""
-        if isinstance(error, ConnectionRefusedError):
-            return (
-                "Connection refused by the target device.\n\n"
-                "Possible causes:\n"
-                "1. The simulator is not running\n"
-                "2. The wrong TCP port was specified\n"
-                "3. The server/client mode settings don't match\n\n"
-                "Please ensure:\n"
-                "• The simulator is running\n"
-                "• The port matches the simulator's port\n"
-                "• Server/client mode is correct"
-            )
-        if isinstance(error, TimeoutError):
-            mode = "client" if radio_config.server_mode else "server"
-            return (
-                f"Connection timed out in {mode} mode.\n\n"
-                "Possible causes:\n"
-                "1. No device listening on the specified port\n"
-                "2. The network connection is blocked\n"
-                "3. The wrong server/client mode selected\n\n"
-                "Check:\n"
-                "• The simulator is running & in the opposite mode\n"
-                "• The port is not blocked by a firewall\n"
-                "• The host address is correct"
-            )
-        if isinstance(error, ConnectionResetError):
-            return (
-                "The connection was reset by the remote device.\n\n"
-                "Possible causes:\n"
-                "1. Both devices are in the same mode (both server or both client)\n"
-                "2. The remote device closed the connection"
-            )
-        if isinstance(error, serial.serialutil.SerialException):
-            if "Access is denied" in str(error):
-                return (
-                    "Could not access the serial port. Ensure:\n\n"
-                    "1. The port is not in use by another application\n"
-                    "2. You have permission to access the port\n"
-                    "3. The device is properly connected\n\n"
-                    f"Details: {error}"
-                )
-            return f"Serial port error: {error}\n\nCheck your connection settings."
-        return f"Failed to start communications: {error}\n\nCheck settings and try again."
+        error_messages = {
+            ConnectionRefusedError: f"Connection refused to {radio_config.host}:{radio_config.tcp_port}",
+            TimeoutError: "Connection timed out",
+            ConnectionResetError: "Connection was reset",
+            serial.serialutil.SerialException: f"Serial error on port {radio_config.serial_port}",
+        }
+
+        return error_messages.get(type(error), f"Unexpected error: {error!s}")
+
+    def _handle_sync_timeout(self) -> None:
+        """Handle sync timeout by emitting the sync_timeout signal."""
+        logging.info("Sync timeout reached, emitting signal")
+        self.sync_timeout.emit()
 
     def _handle_sync_request_error(self) -> bool:
         """Handle errors during sync request and stop comms."""
@@ -233,18 +249,20 @@ class CommunicationBridge(QObject):
 
     def _handle_sync_response(self, data: SyncResponseData) -> None:
         """Handle sync response from drone."""
+        # Always emit success since we got a response
+        self.connection_status.emit("Drone connected successfully")
+
         if not data.success:
             logging.warning("Sync warning - GPS not ready or initialization incomplete")
             self.error_message.emit("Warning: GPS not ready or initialization failed. GPS data may arrive shortly.")
-        else:
-            self.connection_status.emit("Drone connected successfully")
 
     # ----- Tile and POI methods -----
 
-    @pyqtSlot("int", "int", "int", "QString", "bool", result="QString")
-    def get_tile(self, z: int, x: int, y: int, source: str, *, offline: bool = False) -> str:
+    @pyqtSlot("int", "int", "int", "QString", "QVariantMap", result="QString")
+    def get_tile(self, z: int, x: int, y: int, source: str, options: dict) -> str:
         """Get a map tile as a base64 string."""
         try:
+            offline = bool(options.get("offline", False))
             tile_data = get_tile(z, x, y, source_id=source, offline=offline)
             if tile_data is None:
                 return ""
@@ -403,3 +421,30 @@ class CommunicationBridge(QObject):
         except Exception:
             logging.exception("Error clearing all data")
             return False
+
+    @pyqtSlot()
+    def cancel_connection(self) -> None:
+        """Cancel the current connection attempt and clean up."""
+        logging.info("Cancelling connection")
+        if self._drone_comms:
+            self._drone_comms.stop()
+            self._drone_comms = None
+        self._sync_packet_id = None
+        self.connection_status.emit("Connection cancelled")
+
+    @pyqtSlot()
+    def disconnect(self) -> None:
+        """Send a final sync request and disconnect."""
+        logging.info("Disconnecting...")
+        if self._drone_comms:
+            try:
+                # Send a final sync request but don't wait for response
+                sync_request = SyncRequestData(ack_timeout=1, max_retries=1)
+                self._drone_comms.send_sync_request(sync_request)
+            except (ConnectionError, TimeoutError, OSError):
+                logging.warning("Failed to send final sync request", exc_info=True)
+            finally:
+                self._drone_comms.stop()
+                self._drone_comms = None
+                self._sync_packet_id = None
+                self.connection_status.emit("Disconnected")

@@ -1,5 +1,5 @@
 import React from 'react';
-import Tooltip from '../common/Tooltip';
+import Tooltip from '../../common/Tooltip';
 
 interface AdvancedCommsSettingsProps {
     ackTimeout: number;

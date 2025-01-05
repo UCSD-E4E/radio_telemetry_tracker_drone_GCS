@@ -5,21 +5,23 @@ export interface Signal<T> {
     disconnect(callback: (value: T) => void): void;
 }
 
-export interface CommsConfig {
+export interface CommsConfiguration {
     interface_type: 'serial' | 'simulated';
     port?: string;
     baudrate?: number;
     host?: string;
     tcp_port?: number;
     server_mode?: boolean;
-    ack_timeout?: number;
-    max_retries?: number;
+    ack_timeout: number;
+    max_retries: number;
 }
 
 export interface DroneBackend {
     // Comms
     get_serial_ports(): Promise<string[]>;
-    initialize_comms(config: CommsConfig): Promise<boolean>;
+    initialize_comms(config: CommsConfiguration): Promise<boolean>;
+    cancel_connection(): Promise<void>;
+    disconnect(): Promise<void>;
     connection_status: Signal<string>;
     sync_timeout: Signal<void>;
     error_message: Signal<string>;

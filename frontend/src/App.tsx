@@ -1,4 +1,4 @@
-import { CommsProvider } from './contexts/CommsContext';
+import { CommsProvider } from './contexts/CommsProvider';
 import { MapProvider } from './contexts/MapContext';
 import MainLayout from './MainLayout';
 

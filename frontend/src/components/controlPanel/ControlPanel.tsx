@@ -25,63 +25,73 @@ const ControlPanel: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            {/* Map Source Selection */}
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Map Source</label>
-                <select
-                    value={currentSource.id}
-                    onChange={(e) => {
-                        const src = mapSources.find((s) => s.id === e.target.value);
-                        if (src) setCurrentSource(src);
-                    }}
-                    className="w-full px-3 py-2 bg-white border border-gray-300 
-                     rounded-md shadow-sm focus:outline-none 
-                     focus:ring-2 focus:ring-blue-500"
-                >
-                    {mapSources.map((source) => (
-                        <option key={source.id} value={source.id}>
-                            {source.name}
-                        </option>
-                    ))}
-                </select>
-            </div>
-
-            {/* Offline mode */}
-            <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                    <input
-                        type="checkbox"
-                        checked={isOffline}
-                        onChange={(e) => setIsOffline(e.target.checked)}
-                        className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
-                    />
-                    Offline Mode
-                </label>
-                <div className="mt-1 text-xs text-gray-500">
-                    {tileInfo &&
-                        `${tileInfo.total_tiles} tiles (${tileInfo.total_size_mb.toFixed(1)} MB)`}
+            {/* Compact Settings Group */}
+            <div className="space-y-3">
+                {/* Map Source */}
+                <div className="bg-white/50 rounded-lg p-3 border border-gray-200">
+                    <select
+                        value={currentSource.id}
+                        onChange={(e) => {
+                            const src = mapSources.find((s) => s.id === e.target.value);
+                            if (src) setCurrentSource(src);
+                        }}
+                        className="w-full px-2 py-1.5 text-sm border border-gray-200 
+                         rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                        {mapSources.map((source) => (
+                            <option key={source.id} value={source.id}>
+                                {source.name}
+                            </option>
+                        ))}
+                    </select>
                 </div>
-                <button
-                    onClick={() => setShowClearConfirmation(true)}
-                    className="mt-2 w-full px-3 py-1.5 text-sm text-red-600 
-                     border border-red-200 rounded hover:bg-red-50"
-                >
-                    Clear Tile Cache
-                </button>
+
+                {/* Cache Settings */}
+                <div className="bg-white/50 rounded-lg p-3 border border-gray-200">
+                    <label className="flex items-center gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={isOffline}
+                            onChange={(e) => setIsOffline(e.target.checked)}
+                            className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                        />
+                        <div className="flex-1">
+                            <span className="font-medium">Offline Mode</span>
+                            {tileInfo && (
+                                <span className="text-xs text-gray-500 ml-2">
+                                    {tileInfo.total_tiles} tiles ({tileInfo.total_size_mb.toFixed(1)} MB)
+                                </span>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setShowClearConfirmation(true)}
+                            className="text-xs text-red-600 hover:text-red-800"
+                        >
+                            Clear Cache
+                        </button>
+                    </label>
+                </div>
+
+                {/* POIs */}
+                <div className="bg-white/50 rounded-lg p-3 border border-gray-200">
+                    <POIForm />
+                    <div className="mt-2">
+                        <POIList />
+                    </div>
+                </div>
             </div>
 
-            {/* POIs */}
-            <POIForm />
-            <POIList />
+            {/* Frequency Layers (More Prominent) */}
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-800 mb-3">Frequency Layers</h3>
+                <FrequencyLayersControl />
+            </div>
 
-            {/* Frequency Layers Control */}
-            <FrequencyLayersControl />
-
-            {/* Clear all data */}
+            {/* Clear All Data */}
             <button
                 onClick={() => clearAllData()}
-                className="w-full px-3 py-1.5 text-sm text-red-600 
-                   border border-red-200 rounded hover:bg-red-50"
+                className="w-full px-4 py-2 text-sm text-red-600 
+                 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
             >
                 Clear All Data
             </button>
