@@ -19,7 +19,11 @@ const AdvancedCommsSettings: React.FC<AdvancedCommsSettingsProps> = ({
             <div>
                 <div className="flex items-center gap-1 mb-2">
                     <label className="text-sm font-medium text-gray-700">ACK Timeout (ms)</label>
-                    <Tooltip text="How long to wait for acknowledgment before retrying" />
+                    <Tooltip content="How long to wait for acknowledgment before retrying">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </Tooltip>
                 </div>
                 <input
                     type="number"
@@ -35,7 +39,11 @@ const AdvancedCommsSettings: React.FC<AdvancedCommsSettingsProps> = ({
             <div>
                 <div className="flex items-center gap-1 mb-2">
                     <label className="text-sm font-medium text-gray-700">Max Retries</label>
-                    <Tooltip text="Maximum number of retries before giving up" />
+                    <Tooltip content="Maximum number of retries before giving up">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </Tooltip>
                 </div>
                 <input
                     type="number"

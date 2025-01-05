@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import FieldDeviceControls from './components/fieldDevice/FieldDeviceControls';
-import ControlPanel from './components/controlPanel/ControlPanel';
+import FrequencyManager from './components/controlPanel/FrequencyManager';
 import MapContainer from './components/map/MapContainer';
+import MapOverlayControls from './components/map/MapOverlayControls';
 import { DeviceIcon, MapIcon } from './components/icons';
 
 /**
  * Main two-pane layout:
  * Left side: Leaflet map
- * Right side: Tabs for Field Device Controls or Map Controls.
+ * Right side: Tabs for Field Device Controls or Frequency Manager.
  */
 const MainLayout: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'device' | 'map'>('device');
@@ -38,7 +39,7 @@ const MainLayout: React.FC = () => {
                         active={activeTab === 'map'}
                         onClick={() => setActiveTab('map')}
                         icon={<MapIcon />}
-                        label="Map Controls"
+                        label="Frequencies"
                     />
                 </div>
 
@@ -47,7 +48,7 @@ const MainLayout: React.FC = () => {
                     {activeTab === 'device' ? (
                         <FieldDeviceControls />
                     ) : (
-                        <ControlPanel />
+                        <FrequencyManager />
                     )}
                 </div>
             </div>
@@ -55,6 +56,7 @@ const MainLayout: React.FC = () => {
             {/* Map */}
             <div className="flex-1 relative">
                 <MapContainer />
+                <MapOverlayControls />
             </div>
         </div>
     );

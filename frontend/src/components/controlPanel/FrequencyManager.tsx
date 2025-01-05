@@ -12,4 +12,4 @@ const FrequencyManager: React.FC = () => {
     );
 };
 
-export default FrequencyManager;
+export default FrequencyManager; 

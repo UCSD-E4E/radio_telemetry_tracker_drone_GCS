@@ -153,7 +153,11 @@ const CommsConfig: React.FC = () => {
                                 <div>
                                     <div className="flex items-center gap-1 mb-2">
                                         <label className="text-sm font-medium text-gray-700">Serial Port</label>
-                                        <Tooltip text="The COM port where your radio device is connected (e.g. COM3)." />
+                                        <Tooltip content="The COM or ttyUSB port where your radio device is connected (e.g. COM3 or ttyUSB0).">
+                                            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </Tooltip>
                                     </div>
                                     <select
                                         value={selectedPort}
@@ -174,7 +178,11 @@ const CommsConfig: React.FC = () => {
                                 <div>
                                     <div className="flex items-center gap-1 mb-2">
                                         <label className="text-sm font-medium text-gray-700">Baud Rate</label>
-                                        <Tooltip text="Must match your device's configured rate (e.g. 57600)." />
+                                        <Tooltip content="Must match your device's configured rate (e.g. 57600).">
+                                            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </Tooltip>
                                     </div>
                                     <select
                                         value={baudRate?.toString() || '57600'}
@@ -209,7 +217,11 @@ const CommsConfig: React.FC = () => {
                                 <div>
                                     <div className="flex items-center gap-1 mb-2">
                                         <label className="text-sm font-medium text-gray-700">Host</label>
-                                        <Tooltip text="Use 'localhost' for local, or remote IP for network." />
+                                        <Tooltip content="Use 'localhost' for local, or remote IP for network.">
+                                            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </Tooltip>
                                     </div>
                                     <input
                                         type="text"
@@ -223,7 +235,11 @@ const CommsConfig: React.FC = () => {
                                 <div>
                                     <div className="flex items-center gap-1 mb-2">
                                         <label className="text-sm font-medium text-gray-700">TCP Port</label>
-                                        <Tooltip text="Port for TCP simulation. Default 50000." />
+                                        <Tooltip content="Port for TCP simulation. Default 50000.">
+                                            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </Tooltip>
                                     </div>
                                     <input
                                         type="number"
