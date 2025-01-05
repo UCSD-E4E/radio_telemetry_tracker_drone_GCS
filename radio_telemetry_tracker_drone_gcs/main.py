@@ -1,33 +1,29 @@
-#!/usr/bin/env python3
 """Main entry point for the Radio Telemetry Tracker Drone Ground Control Station."""
 
 import sys
-import threading
 
 from PyQt6.QtWidgets import QApplication
 
-from .bridge import Bridge
-from .tile_server import start_tile_server
-from .window import MainWindow
+from radio_telemetry_tracker_drone_gcs.comms.communication_bridge import CommunicationBridge
+from radio_telemetry_tracker_drone_gcs.services.tile_server import init_db
+from radio_telemetry_tracker_drone_gcs.window import MainWindow
 
 
 def main() -> int:
-    """Start the RTT Drone GCS application.
+    """Start the RTT Drone GCS application."""
+    # Initialize the tile database
+    init_db()
 
-    Returns:
-        int: Application exit code
-    """
-    # Start tile server in a separate thread
-    tile_server_thread = threading.Thread(target=start_tile_server, daemon=True)
-    tile_server_thread.start()
-
+    # Initialize and run the PyQt application
     app = QApplication(sys.argv)
     window = MainWindow()
-    bridge = Bridge()
+
+    # Create the communication bridge
+    bridge = CommunicationBridge()
     window.set_bridge(bridge)
+
     window.show()
     return app.exec()
 
-
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -1,4 +1,7 @@
-"""Build script for creating executable with PyInstaller."""
+"""Build script for creating an executable with PyInstaller.
+
+This script also handles building the frontend before bundling everything.
+"""
 
 import logging
 import subprocess
@@ -14,23 +17,23 @@ def main() -> None:
     root_dir = Path(__file__).parent.parent
     frontend_dir = build_frontend()
 
-    # Base PyInstaller arguments
     cmd = [
         "pyinstaller",
         "--name=RTT-GCS",
         "--windowed",
         "--onefile",
-        "--add-data", f"{frontend_dir / 'dist'}:frontend/dist",
+        "--add-data",
+        f"{frontend_dir / 'dist'}:frontend/dist",
     ]
 
-    # Add icon if it exists
+    # Optional: add an icon if you have one in assets/
     icon_path = root_dir / "assets" / "icon.ico"
     if icon_path.exists():
         cmd.extend(["--icon", str(icon_path)])
 
-    # Add main script
+    # Main script
     cmd.append(str(root_dir / "radio_telemetry_tracker_drone_gcs" / "main.py"))
 
-    logger.info("Building executable...")
+    logger.info("Building executable with PyInstaller...")
     subprocess.run(cmd, check=True)  # noqa: S603
-    logger.info("Build complete! Executable can be found in the dist directory.")
+    logger.info("Build complete! Executable can be found in the 'dist' directory.")

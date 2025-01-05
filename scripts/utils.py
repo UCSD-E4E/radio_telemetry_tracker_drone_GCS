@@ -1,4 +1,4 @@
-"""Shared utility functions for build and development."""
+"""Shared utility functions for build and development scripts."""
 
 import logging
 import platform
@@ -16,7 +16,7 @@ ALLOWED_COMMANDS = {
 
 
 def validate_command(cmd: list[str]) -> bool:
-    """Validate that the command is in the allowed list."""
+    """Ensure the command is in the allowed list for security reasons."""
     if not cmd:
         return False
     program = cmd[0]
@@ -24,12 +24,17 @@ def validate_command(cmd: list[str]) -> bool:
 
 
 def build_frontend() -> Path:
-    """Build the frontend using npm."""
+    """Build the frontend using npm.
+
+    Returns the path to the frontend directory.
+    """
     frontend_dir = Path(__file__).parent.parent / "frontend"
     logger.info("Building frontend...")
+
     cmd = [NPM_CMD, "run", "build"]
     if not validate_command(cmd):
-        msg = "Invalid command"
+        msg = "Invalid or disallowed command for building frontend."
         raise ValueError(msg)
+
     subprocess.run(cmd, cwd=frontend_dir, check=True, text=True)  # noqa: S603
     return frontend_dir

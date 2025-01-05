@@ -1,29 +1,32 @@
-/// <reference lib="dom" />
-/// <reference lib="dom.iterable" />
+import type { DroneBackend } from '../utils/backend';
 
-import { Signal } from '../utils/backend';
-
-interface Window {
-  QWebChannel: new (
-    _transport: unknown,
-    _callback: (_channel: unknown) => void
-  ) => void;
-  qt: {
-    webChannelTransport: unknown;
-  };
-  backend: import('../utils/backend').DroneBackend;
-  backendLoaded: boolean;
-  pyqtApi: import('../utils/backend').DroneBackend;
+declare global {
+    interface Window {
+        backend: DroneBackend;
+        backendLoaded: boolean;
+        _mapHandlers?: {
+            tileInfo: (info: TileInfo) => void;
+            pois: (pois: POI[]) => void;
+        };
+    }
 }
 
-declare module '*.css';
+export interface POI {
+    name: string;
+    coords: [number, number];
+}
+
+export interface TileInfo {
+    total_tiles: number;
+    total_size_mb: number;
+}
 
 export interface DroneData {
     lat: number;
     long: number;
     altitude: number;
     heading: number;
-    lastUpdate: number;  // timestamp
+    lastUpdate: number; // ms
 }
 
 export interface PingData {
@@ -34,11 +37,28 @@ export interface PingData {
     timestamp: number;
 }
 
+export interface PingDataUpdate {
+    frequency: number;
+    cleared?: true;
+    amplitude?: number;
+    lat?: number;
+    long?: number;
+    timestamp?: number;
+}
+
 export interface LocEstData {
     frequency: number;
     lat: number;
     long: number;
     timestamp: number;
+}
+
+export interface LocEstDataUpdate {
+    frequency: number;
+    cleared?: true;
+    lat?: number;
+    long?: number;
+    timestamp?: number;
 }
 
 export interface FrequencyLayer {
@@ -48,12 +68,4 @@ export interface FrequencyLayer {
     visible: boolean;
 }
 
-// Extend the existing Backend interface
-interface Backend {
-    onDroneData: Signal<DroneData>;
-    onPingData: Signal<PingData>;
-    onLocEstData: Signal<LocEstData>;
-    
-    clearFrequencyData: (frequency: number) => Promise<boolean>;
-    clearAllData: () => Promise<boolean>;
-}
+export {};
