@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { fetchBackend, type CommsConfiguration } from '../utils/backend';
 import type { CommsContextValue } from '../types/commsContext';
+import type { DroneData } from '../types/global';
 import { CommsContext } from './CommsContext';
 
 export const CommsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -19,6 +20,7 @@ export const CommsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [showCancelSync, setShowCancelSync] = useState(false);
     const [waitingForSync, setWaitingForSync] = useState(false);
+    const [droneData, setDroneData] = useState<DroneData | null>(null);
 
     const loadSerialPorts = useCallback(async () => {
         if (!window.backend) return;
@@ -144,7 +146,14 @@ export const CommsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             backend.error_message.connect((message: string) => {
                 console.log('Error message received:', message);
                 setErrorMessage(message);
-                // Don't reset waitingForSync here as we might still be waiting
+            });
+
+            backend.drone_data_updated.connect((data: DroneData | { disconnected: true }) => {
+                if ('disconnected' in data) {
+                    setDroneData(null);
+                } else {
+                    setDroneData(data);
+                }
             });
         };
 
@@ -182,6 +191,8 @@ export const CommsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
                 showCancelSync,
                 setShowCancelSync,
+
+                droneData,
 
                 initializeComms,
                 cancelConnection,

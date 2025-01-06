@@ -1,12 +1,14 @@
+import type { DroneData } from './global';
+
 export interface CommsContextValue {
     interfaceType: 'serial' | 'simulated';
     setInterfaceType: (type: 'serial' | 'simulated') => void;
     serialPorts: string[];
-    loadSerialPorts: () => Promise<void>;
+    loadSerialPorts: () => void;
     selectedPort: string;
     setSelectedPort: (port: string) => void;
     baudRate: number | null;
-    setBaudRate: (rate: number | null) => void;
+    setBaudRate: (rate: number) => void;
     host: string;
     setHost: (host: string) => void;
     tcpPort: number | null;
@@ -27,6 +29,8 @@ export interface CommsContextValue {
 
     showCancelSync: boolean;
     setShowCancelSync: (show: boolean) => void;
+
+    droneData: DroneData | null;
 
     initializeComms: () => Promise<boolean>;
     cancelConnection: () => void;

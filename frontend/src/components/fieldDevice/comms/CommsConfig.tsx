@@ -140,7 +140,7 @@ const CommsConfig: React.FC = () => {
                                         : 'border-gray-200 hover:border-gray-300'
                                     }`}
                             >
-                                <div className="font-medium mb-1">Simulated</div>
+                                <div className="font-medium mb-1">Simulated Connection</div>
                                 <div className="text-sm text-gray-500">
                                     Test with simulated data over TCP/IP
                                 </div>

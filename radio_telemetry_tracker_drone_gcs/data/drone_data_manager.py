@@ -4,6 +4,7 @@ Emits PyQt signals upon data updates so the JS side can react in real-time.
 """
 
 import logging
+from dataclasses import asdict
 
 from PyQt6.QtCore import QObject, QVariant, pyqtSignal
 
@@ -13,12 +14,9 @@ logging.basicConfig(level=logging.INFO)
 
 
 class DroneDataManager(QObject):
-    """Manager for drone and signal data stored in memory.
+    """Manages drone telemetry and signal data in memory.
 
-    Exposes signals:
-      - drone_data_updated
-      - ping_data_updated
-      - loc_est_data_updated
+    Emits signals when data is updated so the frontend can react.
     """
 
     # Signals for data updates
@@ -27,32 +25,35 @@ class DroneDataManager(QObject):
     loc_est_data_updated = pyqtSignal(QVariant)
 
     def __init__(self) -> None:
-        """Initialize the drone data manager."""
+        """Initialize the DroneDataManager."""
         super().__init__()
-        self._current_drone_data: DroneData | None = None
-        self._pings: dict[int, list[PingData]] = {}
-        self._location_estimates: dict[int, LocEstData] = {}
+        self._drone_data: DroneData | None = None
+        self._pings: dict[int, list[PingData]] = {}  # frequency -> list of pings
+        self._location_estimates: dict[int, LocEstData] = {}  # frequency -> location estimate
 
-    def update_drone_data(self, data: DroneData) -> None:
-        """Update the current drone position and status.
+    def update_drone_data(self, data: DroneData | None) -> None:
+        """Update drone position and status.
 
-        Emit 'drone_data_updated' with the new data.
+        If data is None, indicates drone is disconnected.
         """
-        self._current_drone_data = data
-        from dataclasses import asdict
-
-        self.drone_data_updated.emit(QVariant(asdict(data)))
+        self._drone_data = data
+        if data is None:
+            # Emit disconnected state
+            logging.info("Emitting disconnected state to frontend")
+            self.drone_data_updated.emit(QVariant({"disconnected": True}))
+        else:
+            # Emit normal data update
+            logging.info("Emitting drone data to frontend: %s", asdict(data))
+            self.drone_data_updated.emit(QVariant(asdict(data)))
 
     def add_ping(self, ping: PingData) -> None:
-        """Add a new signal ping to our internal dictionary.
+        """Add a new signal ping for a frequency.
 
         Emit 'ping_data_updated' with the new ping.
         """
         if ping.frequency not in self._pings:
             self._pings[ping.frequency] = []
         self._pings[ping.frequency].append(ping)
-
-        from dataclasses import asdict
 
         self.ping_data_updated.emit(QVariant(asdict(ping)))
 

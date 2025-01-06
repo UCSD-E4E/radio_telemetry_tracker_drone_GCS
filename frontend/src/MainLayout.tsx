@@ -16,7 +16,7 @@ const MainLayout: React.FC = () => {
     return (
         <div className="h-screen w-screen flex bg-gray-50">
             {/* Sidebar */}
-            <div className="w-96 bg-white shadow-lg flex flex-col relative z-[2000]">
+            <div className="w-96 card flex flex-col relative z-[2000]">
                 {/* Header */}
                 <div className="p-6 border-b border-gray-100">
                     <h1 className="text-2xl font-bold text-gray-800">
@@ -44,7 +44,7 @@ const MainLayout: React.FC = () => {
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto bg-white p-4">
+                <div className="flex-1 overflow-y-auto p-4">
                     {activeTab === 'device' ? (
                         <FieldDeviceControls />
                     ) : (

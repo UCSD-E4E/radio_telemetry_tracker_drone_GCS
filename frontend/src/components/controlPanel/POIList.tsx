@@ -38,7 +38,7 @@ const POIItem: React.FC<POIItemProps> = ({ poi, onRemove, onGoto, onRename }) =>
                     onChange={(e) => setNewName(e.target.value)}
                     onBlur={handleRename}
                     onKeyDown={handleKeyDown}
-                    className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="input"
                     autoFocus
                 />
             ) : (
@@ -51,7 +51,7 @@ const POIItem: React.FC<POIItemProps> = ({ poi, onRemove, onGoto, onRename }) =>
                     </button>
                     <button
                         onClick={() => setIsEditing(true)}
-                        className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="btn-outline text-xs opacity-0 group-hover:opacity-100"
                     >
                         Edit
                     </button>
@@ -59,7 +59,7 @@ const POIItem: React.FC<POIItemProps> = ({ poi, onRemove, onGoto, onRename }) =>
             )}
             <button
                 onClick={() => onRemove(poi.name)}
-                className="text-xs text-red-600 opacity-0 group-hover:opacity-100 transition-opacity ml-2"
+                className="btn-danger text-xs opacity-0 group-hover:opacity-100 ml-2"
             >
                 Remove
             </button>

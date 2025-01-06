@@ -8,13 +8,15 @@ from dataclasses import dataclass
 
 @dataclass
 class DroneData:
-    """Drone position and status data."""
-
+    """Data container for drone position and status."""
     lat: float
     long: float
     altitude: float
     heading: float
-    last_update: int  # Timestamp in milliseconds
+    last_update: int  # ms
+    ping_time: int  # ms
+    packet_loss: float  # percentage
+    connection_quality: str  # 'great', 'good', 'ok', 'bad', 'critical'
 
 
 @dataclass
