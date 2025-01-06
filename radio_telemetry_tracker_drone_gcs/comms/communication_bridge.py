@@ -1,127 +1,108 @@
-"""CommunicationBridge module for backend-frontend communication.
+"""CommunicationBridge: Connects Python backend to the QWebChannel (frontend).
 
-This class uses the DroneComms from the radio-telemetry-tracker-drone-comms-package
-to establish connections and exchange data. It also leverages DroneDataManager
-to store and emit updates for drone and signal data.
+- Handles high-level slot methods for tile/POI, Drone comm, etc.
+- Delegates to DroneCommsService, GPSHandler, tile_service, poi_service, drone_data_manager
 """
-
-from __future__ import annotations
 
 import base64
 import logging
 import time
 from typing import Any
 
-import serial.tools.list_ports
-import pyproj
+import serial
 from PyQt6.QtCore import QObject, QTimer, QVariant, pyqtSignal, pyqtSlot
-from radio_telemetry_tracker_drone_comms_package import (
-    DroneComms,
-    RadioConfig,
-    SyncRequestData,
-    SyncResponseData,
-    GPSData as DroneGPSData,
-    StopRequestData,
-)
+from radio_telemetry_tracker_drone_comms_package import SyncResponseData
 
-# Import from local modules
+from radio_telemetry_tracker_drone_gcs.comms.drone_comms_service import DroneCommsService, RadioConfig
+from radio_telemetry_tracker_drone_gcs.comms.gps_handler import GPSHandler
 from radio_telemetry_tracker_drone_gcs.data.drone_data_manager import DroneDataManager
-from radio_telemetry_tracker_drone_gcs.data.models import DroneData, LocEstData, PingData
-from radio_telemetry_tracker_drone_gcs.services.tile_server import (
-    add_poi,
-    clear_tile_cache,
-    get_pois,
-    get_tile,
-    get_tile_info,
-    remove_poi,
-    rename_poi,
-)
-
-logging.basicConfig(level=logging.INFO)
+from radio_telemetry_tracker_drone_gcs.data.models import ConnectionMetrics, DroneData, LocEstData, PingData
 
 
 class CommunicationBridge(QObject):
-    """Communication bridge class for communication between Python backend and JS frontend.
+    """Bridge class for QWebChannel <-> Python, handles signals & slots.
 
-    Exposes PyQt signals and slots to be accessed via QWebChannel in the web UI.
+    Handles high-level slot methods for tile/POI, Drone comm, etc.
     """
 
-    # Signals for emitting data or errors to the frontend
+    # Signals
     error_message = pyqtSignal(str)
     tile_info_updated = pyqtSignal(QVariant)
     pois_updated = pyqtSignal(QVariant)
 
-    # Drone data signals
     drone_data_updated = pyqtSignal(QVariant)
     ping_data_updated = pyqtSignal(QVariant)
     loc_est_data_updated = pyqtSignal(QVariant)
 
-    # Connection status signals
     connection_status = pyqtSignal(str)
     sync_timeout = pyqtSignal()
 
-    def __init__(self) -> None:
-        """Initialize the CommunicationBridge and the DroneDataManager."""
+    def __init__(self, drone_data_manager: DroneDataManager) -> None:
+        """Initialize the communication bridge.
+
+        Sets up data manager, services, and comms placeholders.
+        """
         super().__init__()
-        # Initialize data manager
-        self._drone_data_manager = DroneDataManager()
-        self._drone_data_manager.drone_data_updated.connect(self.drone_data_updated.emit)
-        self._drone_data_manager.ping_data_updated.connect(self.ping_data_updated.emit)
-        self._drone_data_manager.loc_est_data_updated.connect(self.loc_est_data_updated.emit)
+        self._drone_data_manager = drone_data_manager
 
-        self._drone_comms: DroneComms | None = None
-        self._sync_packet_id: int | None = None
-        self._stop_packet_id: int | None = None
-        self._expected_ack_id: int | None = None
-        self._ack_received = False
+        # Initialize drone comms with separate callbacks
+        self._drone_comms = DroneCommsService(
+            on_drone_data=self._handle_drone_data,
+            on_connection_metrics=self._handle_connection_metrics,
+        )
 
-        # Connection quality tracking
-        self._last_packet_id: int | None = None
-        self._missed_packets = 0
-        self._total_packets = 0
-        self._last_ping_times: list[int] = []  # Keep last 10 ping times for average
+    def _handle_drone_data(self, data: DroneData) -> None:
+        """Handle new drone position data."""
+        try:
+            self._drone_data_manager.update_drone_data(data)
+        except Exception:
+            logging.exception("Error handling drone data")
 
+    def _handle_connection_metrics(self, metrics: ConnectionMetrics) -> None:
+        """Handle connection quality updates."""
+        try:
+            self._drone_data_manager.update_connection_metrics(metrics)
+        except Exception:
+            logging.exception("Error handling connection metrics")
+
+    # --------------------------------------------------------------------------
+    # SLOTS for serial port list, comm init, cancel, disconnect
+    # --------------------------------------------------------------------------
     @pyqtSlot(result="QVariantList")
     def get_serial_ports(self) -> list[str]:
-        """Get a list of available serial ports on the system.
-
-        Returns a Python list of strings.
-        """
+        """Return list of available serial ports."""
         try:
+            import serial.tools.list_ports
+
             ports_info = list(serial.tools.list_ports.comports())
-            logging.info("Found %d serial ports", len(ports_info))
-            for p in ports_info:
-                logging.info("Port: %s, Description: %s, Hardware ID: %s", p.device, p.description, p.hwid)
             return [str(port.device) for port in ports_info]
         except Exception:
-            logging.exception("Error getting serial ports")
+            logging.exception("Error listing serial ports")
             return []
 
     @pyqtSlot("QVariantMap", result=bool)
     def initialize_comms(self, config: dict[str, Any]) -> bool:
         """Initialize DroneComms with the given configuration.
 
-        config keys (string) -> dynamic. Typically includes:
-          - interface_type ('serial' or 'simulated')
-          - port, baudrate, host, tcp_port, server_mode
-          - ack_timeout, max_retries
+        Expects:
+        {
+            interface_type: 'serial' | 'simulated',
+            port?: string,
+            baudrate?: number,
+            host?: string,
+            tcp_port?: number,
+            server_mode?: boolean,
+            ack_timeout: number (seconds),
+            max_retries: number,
+        }.
         """
         try:
-            if config.get("server_mode"):
-                self.connection_status.emit("Waiting for incoming connection...")
-
-            # Log the config for debugging
-            logging.info("Initializing comms with config: %s", config)
-
-            # For serial connections, ensure port is specified
+            # Validate config
             if config["interface_type"] == "serial" and not config.get("port"):
-                error_msg = (
-                    "No serial port selected.\n\n" "Please select a port from the dropdown menu before connecting."
-                )
-                self.error_message.emit(error_msg)
+                self.error_message.emit("No serial port selected.")
                 return False
 
-            radio_config = RadioConfig(
+            radio_cfg = RadioConfig(
                 interface_type=config["interface_type"],
                 port=config.get("port"),
                 baudrate=config.get("baudrate"),
@@ -130,251 +111,203 @@ class CommunicationBridge(QObject):
                 server_mode=config.get("server_mode", False),
             )
 
-            # Log the radio config for debugging
-            logging.info(
-                "Created radio config: %s",
-                {
-                    "interface_type": radio_config.interface_type,
-                    "port": radio_config.port,
-                    "baudrate": radio_config.baudrate,
-                    "host": radio_config.host,
-                    "tcp_port": radio_config.tcp_port,
-                    "server_mode": radio_config.server_mode,
-                },
-            )
+            ack_timeout_s = float(config["ack_timeout"])
+            max_retries = int(config["max_retries"])
 
-            # Get timeout values from config
-            ack_timeout_s = float(config["ack_timeout"])  # Must be provided by frontend
-            max_retries = int(config["max_retries"])  # Must be provided by frontend
-
-            logging.info("Using timeout values: ack_timeout=%s seconds, max_retries=%d", ack_timeout_s, max_retries)
-
-            self._drone_comms = DroneComms(
-                radio_config=radio_config,
+            # Create comms service
+            self._drone_comms_service = DroneCommsService(
+                radio_config=radio_cfg,
                 ack_timeout=ack_timeout_s,
                 max_retries=max_retries,
                 on_ack_success=self._on_ack_success,
-                on_ack_callback=self._on_ack_timeout,
+                on_ack_timeout=self._on_ack_timeout,
             )
 
-            # Attempt to connect
-            success, error_msg = self._setup_connection(radio_config)
-            if not success:
-                self.error_message.emit(error_msg or "Unknown error during setup connection")
-                return False
+            # Start it
+            self._drone_comms_service.start()
 
-            # Register sync response handler
-            self._drone_comms.register_sync_response_handler(self._handle_sync_response, once=True)
+            # Register GPS handler
+            self._gps_handler = GPSHandler(
+                drone_data_manager=self._drone_data_manager,
+                ack_timeout=ack_timeout_s,
+                max_retries=max_retries,
+            )
+            self._drone_comms_service.register_gps_handler(self._gps_handler.handle_gps_data)
 
-            try:
-                self._ack_received = False
-                sync_request = SyncRequestData(ack_timeout=ack_timeout_s, max_retries=max_retries)
-                self._sync_packet_id, _, _ = self._drone_comms.send_sync_request(sync_request)
-                self._expected_ack_id = self._sync_packet_id
-                self.connection_status.emit("Waiting for drone to respond...")
+            # Register sync response
+            self._drone_comms_service.register_sync_response_handler(self._handle_sync_response, once=True)
 
-                # Start a timer to emit sync_timeout if no response
-                total_timeout = ack_timeout_s * max_retries
-                logging.info("Setting sync timeout for %.1f seconds", total_timeout)
-                QTimer.singleShot(int(total_timeout * 1000), lambda: self._handle_sync_timeout())
+            # Send sync
+            self._sync_packet_id = self._drone_comms_service.send_sync_request()
+            self._expected_ack_id = self._sync_packet_id
+            self.connection_status.emit("Waiting for drone to respond...")
 
-            except (ConnectionError, TimeoutError, OSError):
-                return self._handle_sync_request_error()
-
-            logging.info("DroneComms initialized and sync request sent")
-
-        except Exception as ex:
-            logging.exception("Error initializing DroneComms")
-            # Check if there's a more specific error message from a lower level
-            if isinstance(
-                ex.__cause__,
-                (
-                    ConnectionRefusedError,
-                    TimeoutError,
-                    ConnectionResetError,
-                    serial.serialutil.SerialException,
-                ),
-            ):
-                error_msg = self._get_error_message(ex.__cause__, radio_config)
-                self.error_message.emit(error_msg)
-            else:
-                self.error_message.emit(
-                    f"Failed to initialize communications.\n\nError: {ex}\n\nCheck your settings and try again.",
-                )
-            return False
-        else:
-            return True
-
-    def _setup_connection(self, radio_config: RadioConfig) -> tuple[bool, str | None]:
-        """Set up the connection with the given radio configuration.
-
-        Returns:
-            (success: bool, error_message: Optional[str])
-        """
-        try:
-            self._drone_comms.start()
+            # If not ack by ack_timeout_s * max_retries, emit sync_timeout
+            total_timeout = ack_timeout_s * max_retries
+            QTimer.singleShot(int(total_timeout * 1000), self._sync_timeout_check)
         except (
             ConnectionRefusedError,
             TimeoutError,
             ConnectionResetError,
             serial.serialutil.SerialException,
         ) as e:
-            error_message = self._get_error_message(e, radio_config)
-            return False, error_message
-        except OSError as e:
-            # For other exceptions, check if there's a more specific error as the cause
-            if isinstance(
-                e.__cause__,
-                (
-                    ConnectionRefusedError,
-                    TimeoutError,
-                    ConnectionResetError,
-                    serial.serialutil.SerialException,
-                ),
-            ):
-                error_message = self._get_error_message(e.__cause__, radio_config)
-            else:
-                error_message = f"Communication error: {e!s}"
-            return False, error_message
+            error_msg = self._get_error_message(e)
+            self.error_message.emit(error_msg)
+            return False
+        except Exception as ex:
+            logging.exception("Error in initialize_comms()")
+            self.error_message.emit(f"Failed to initialize communications.\n\nError: {ex!s}")
+            return False
         else:
-            return True, None
+            return True
 
-    def _handle_sync_timeout(self) -> None:
-        """Handle sync timeout by emitting the sync_timeout signal."""
-        logging.info("Sync timeout reached, emitting signal")
-        self.sync_timeout.emit()
+    @pyqtSlot()
+    def cancel_connection(self) -> None:
+        """Cancel the connection attempt."""
+        logging.info("Cancelling connection attempt")
+        if self._drone_comms_service:
+            self._drone_comms_service.stop()
+            self._drone_comms_service = None
+        self._sync_packet_id = None
+        self.connection_status.emit("Connection cancelled")
 
-    def _handle_sync_request_error(self) -> bool:
-        """Handle errors during sync request and stop comms."""
-        self.error_message.emit(
-            "Connected to port but failed to synchronize with device.\n\n"
-            "Ensure you are connecting to the correct device and try again.",
-        )
-        if self._drone_comms:
-            self._drone_comms.stop()
-            self._drone_comms = None
-        return False
+    @pyqtSlot()
+    def disconnect(self) -> None:
+        """Disconnect from the drone, sending a stop request if possible."""
+        logging.info("Disconnect called.")
+        if not self._drone_comms_service:
+            self.connection_status.emit("Disconnected")
+            return
 
-    def _handle_ack_success(self, packet_id: int) -> None:
-        """Handle successful packet acknowledgment."""
-        if packet_id == self._sync_packet_id:
-            logging.info("Sync request acknowledged")
-
-    def _handle_sync_response(self, data: SyncResponseData) -> None:
-        """Handle sync response from drone."""
-        # Always emit success since we got a response
-        self.connection_status.emit("Drone connected successfully")
-
-        # Register GPS data handler regardless of sync success
-        # GPS data might arrive even if GPS is not fully ready
-        if self._drone_comms:
-            self._drone_comms.register_gps_handler(self._handle_gps_data)
-
-        if not data.success:
-            logging.warning("Sync warning - GPS not ready or initialization incomplete")
-            self.error_message.emit("Warning: GPS not ready or initialization failed. GPS data may arrive shortly.")
-
-    def _handle_gps_data(self, data: DroneGPSData) -> None:
-        """Handle GPS data from drone by converting coordinates and updating position."""
+        # Attempt a stop request
         try:
-            # Extract UTM zone from EPSG code (e.g. 32610 -> 10)
-            utm_zone = str(data.epsg_code)[-2:]
-            hemisphere = "north" if int(str(data.epsg_code)[-3]) == 6 else "south"
+            stop_packet_id = self._drone_comms_service.send_stop_request()
+            self._expected_ack_id = stop_packet_id
+            # Wait for ack or a short timeout
+            total_timeout_s = self._drone_comms_service.ack_timeout_s * self._drone_comms_service.retries
 
-            # Convert from UTM to lat/long using pyproj
-            utm_proj = pyproj.Proj(proj="utm", zone=utm_zone, ellps="WGS84", hemisphere=hemisphere)
-            wgs84_proj = pyproj.Proj("epsg:4326")
-            transformer = pyproj.Transformer.from_proj(utm_proj, wgs84_proj, always_xy=True)
-            longitude, latitude = transformer.transform(data.easting, data.northing)
-
-            # Calculate connection quality metrics
-            current_time_us = int(time.time() * 1_000_000)  # microseconds
-            ping_time = (current_time_us - data.timestamp) / 1000  # convert to milliseconds
-
-            # Update ping time tracking (keep last 10)
-            self._last_ping_times.append(ping_time)
-            if len(self._last_ping_times) > 10:
-                self._last_ping_times.pop(0)
-            avg_ping = sum(self._last_ping_times) / len(self._last_ping_times)
-
-            # Track packet loss
-            if self._last_packet_id is not None:
-                expected = data.packet_id - self._last_packet_id - 1
-                if expected > 0:
-                    self._missed_packets += expected
-            self._last_packet_id = data.packet_id
-            self._total_packets += 1
-
-            packet_loss = (self._missed_packets / (self._total_packets + self._missed_packets)) * 100 if self._total_packets > 0 else 0
-
-            # Calculate connection quality
-            max_ping = self._drone_comms.ack_timeout * 1000 * self._drone_comms.max_retries if self._drone_comms else 10000
-            ping_quality = avg_ping / max_ping
-
-            if ping_quality <= 0.2 and packet_loss <= 5:
-                quality = "great"
-            elif ping_quality <= 0.4 and packet_loss <= 10:
-                quality = "good"
-            elif ping_quality <= 0.6 and packet_loss <= 20:
-                quality = "ok"
-            elif ping_quality <= 0.8 and packet_loss <= 30:
-                quality = "bad"
-            else:
-                quality = "critical"
-
-            # Update drone position with quality metrics
-            new_data = DroneData(
-                lat=latitude,
-                long=longitude,
-                altitude=data.altitude,
-                heading=data.heading,
-                last_update=current_time_us // 1000,  # convert to milliseconds for frontend
-                ping_time=int(avg_ping),
-                packet_loss=packet_loss,
-                connection_quality=quality
-            )
-            self._drone_data_manager.update_drone_data(new_data)
+            # We won't block in a QEventLoop. We'll just schedule a callback
+            QTimer.singleShot(int(total_timeout_s * 1000), self._stop_timeout_check)
         except Exception:
-            logging.exception("Error handling GPS data")
+            logging.exception("Failed to send stop request")
+            # still stop
+            self._cleanup_comms()
 
-    # ----- Tile and POI methods -----
+    # --------------------------------------------------------------------------
+    # DRONE DATA SLOTS (these wrap data manager calls)
+    # --------------------------------------------------------------------------
+    @pyqtSlot("QVariantMap", result=bool)
+    def update_drone_data(self, data: dict) -> bool:
+        """Update drone data (manual override)."""
+        try:
+            drone_data = DroneData(
+                lat=data["lat"],
+                long=data["long"],
+                altitude=data["altitude"],
+                heading=data["heading"],
+                last_update=data.get("last_update") or int(time.time() * 1000),
+            )
+            self._drone_data_manager.update_drone_data(drone_data)
+        except Exception:
+            logging.exception("Error updating drone data")
+            return False
+        else:
+            return True
 
+    @pyqtSlot("QVariantMap", result=bool)
+    def update_connection_metrics(self, data: dict) -> bool:
+        """Update connection metrics (manual override)."""
+        try:
+            metrics = ConnectionMetrics(
+                ping_time=data["ping_time"],
+                packet_loss=data["packet_loss"],
+                connection_quality=data["connection_quality"],
+                last_update=data.get("last_update") or int(time.time() * 1000),
+            )
+            self._drone_data_manager.update_connection_metrics(metrics)
+        except Exception:
+            logging.exception("Error updating connection metrics")
+            return False
+        else:
+            return True
+
+    @pyqtSlot("QVariantMap", result=bool)
+    def add_ping(self, data: dict) -> bool:
+        """Add a new ping (frequency, amplitude, lat, long, timestamp)."""
+        try:
+            ping = PingData(
+                frequency=data["frequency"],
+                amplitude=data["amplitude"],
+                lat=data["lat"],
+                long=data["long"],
+                timestamp=data.get("timestamp") or 0,
+            )
+            self._drone_data_manager.add_ping(ping)
+        except Exception:
+            logging.exception("Error adding ping")
+            return False
+        else:
+            return True
+
+    @pyqtSlot("QVariantMap", result=bool)
+    def update_location_estimate(self, data: dict) -> bool:
+        """Update location estimate for a frequency."""
+        try:
+            est = LocEstData(
+                frequency=data["frequency"],
+                lat=data["lat"],
+                long=data["long"],
+                timestamp=data.get("timestamp") or 0,
+            )
+            self._drone_data_manager.update_location_estimate(est)
+        except Exception:
+            logging.exception("Error updating location estimate")
+            return False
+        else:
+            return True
+
+    @pyqtSlot(int, result=bool)
+    def clear_frequency_data(self, frequency: int) -> bool:
+        """Clear all data associated with the specified frequency."""
+        try:
+            return self._drone_data_manager.clear_frequency_data(frequency)
+        except Exception:
+            logging.exception("Error clearing frequency data")
+            return False
+
+    @pyqtSlot(result=bool)
+    def clear_all_data(self) -> bool:
+        """Clear all drone data, including pings and location estimates."""
+        try:
+            return self._drone_data_manager.clear_all_data()
+        except Exception:
+            logging.exception("Error clearing all data")
+            return False
+
+    # --------------------------------------------------------------------------
+    # TILES & POIs
+    # --------------------------------------------------------------------------
     @pyqtSlot("int", "int", "int", "QString", "QVariantMap", result="QString")
     def get_tile(self, z: int, x: int, y: int, source: str, options: dict) -> str:
-        """Get a map tile as a base64 string."""
+        """Get a tile as base64 from tile_service."""
         try:
-            # Basic validation
-            if z < 0 or x < 0 or y < 0:
-                logging.warning("Invalid tile coordinates: z=%d, x=%d, y=%d", z, x, y)
-                return ""
-
-            # Check if the request is too far out (prevent excessive requests)
-            if z < 2:  # Restrict minimum zoom level
-                logging.warning("Zoom level too low: %d", z)
-                return ""
-
-            max_tile = 2**z - 1
-            if x > max_tile or y > max_tile:
-                logging.warning("Tile coordinates out of bounds: x=%d, y=%d, max=%d", x, y, max_tile)
-                return ""
-
-            offline = bool(options.get("offline", False))
-            tile_data = get_tile(z, x, y, source_id=source, offline=offline)
+            tile_data = self._tile_service.get_tile(z, x, y, source_id=source, offline=options.get("offline", False))
             if tile_data is None:
                 return ""
+            # Might as well emit updated tile info if caching
+            info = self._tile_service.get_tile_info()
+            self.tile_info_updated.emit(QVariant(info))
 
-            # Emit updated tile info after successful caching
-            self.tile_info_updated.emit(QVariant(get_tile_info()))
             return base64.b64encode(tile_data).decode("utf-8")
         except Exception:
-            logging.exception("Error getting tile %d/%d/%d from %s", z, x, y, source)
+            logging.exception("Error in get_tile()")
             return ""
 
     @pyqtSlot(result=QVariant)
     def get_tile_info(self) -> QVariant:
-        """Get information about cached tiles."""
+        """Get information about cached tiles, including total count and size."""
         try:
-            info = get_tile_info()
+            info = self._tile_service.get_tile_info()
             return QVariant(info)
         except Exception:
             logging.exception("Error getting tile info")
@@ -382,34 +315,27 @@ class CommunicationBridge(QObject):
 
     @pyqtSlot(result=bool)
     def clear_tile_cache(self) -> bool:
-        """Clear the tile cache."""
+        """Clear all cached map tiles from storage."""
         try:
-            rows = clear_tile_cache()
-            logging.info("Cleared %d tiles from cache", rows)
+            return self._tile_service.clear_tile_cache()
         except Exception:
             logging.exception("Error clearing tile cache")
             return False
-        else:
-            return rows >= 0
-
-    # ----- POI methods -----
 
     @pyqtSlot(result="QVariant")
     def get_pois(self) -> list[dict]:
-        """Get all POIs from the tile_server database."""
+        """Get list of all points of interest (POIs)."""
         try:
-            pois = get_pois()
-            logging.info("Retrieved POIs: %s", pois)
-            return QVariant(pois)
+            return self._poi_service.get_pois()
         except Exception:
             logging.exception("Error getting POIs")
-            return QVariant([])
+            return []
 
     @pyqtSlot(str, "QVariantList", result=bool)
     def add_poi(self, name: str, coords: list[float]) -> bool:
-        """Add a POI to the database."""
+        """Add a new point of interest (POI)."""
         try:
-            add_poi(name, (coords[0], coords[1]))
+            self._poi_service.add_poi(name, coords)
             self._emit_pois()
         except Exception:
             logging.exception("Error adding POI")
@@ -419,9 +345,9 @@ class CommunicationBridge(QObject):
 
     @pyqtSlot(str, result=bool)
     def remove_poi(self, name: str) -> bool:
-        """Remove a POI from the database."""
+        """Remove a point of interest (POI)."""
         try:
-            remove_poi(name)
+            self._poi_service.remove_poi(name)
             self._emit_pois()
         except Exception:
             logging.exception("Error removing POI")
@@ -431,9 +357,9 @@ class CommunicationBridge(QObject):
 
     @pyqtSlot(str, str, result=bool)
     def rename_poi(self, old_name: str, new_name: str) -> bool:
-        """Rename a POI."""
+        """Rename a point of interest (POI)."""
         try:
-            rename_poi(old_name, new_name)
+            self._poi_service.rename_poi(old_name, new_name)
             self._emit_pois()
         except Exception:
             logging.exception("Error renaming POI")
@@ -442,179 +368,76 @@ class CommunicationBridge(QObject):
             return True
 
     def _emit_pois(self) -> None:
-        """Emit updated POI list to the frontend."""
-        pois = get_pois()
+        pois = self._poi_service.get_pois()
         self.pois_updated.emit(QVariant(pois))
 
-    # ----- Drone data management (via DroneDataManager) -----
-
-    @pyqtSlot("QVariantMap", result=bool)
-    def update_drone_data(self, data: dict) -> bool:
-        """Update drone position and status."""
-        try:
-            new_data = DroneData(
-                lat=data["lat"],
-                long=data["long"],
-                altitude=data["altitude"],
-                heading=data["heading"],
-                last_update=int(time.time() * 1000),
-            )
-            self._drone_data_manager.update_drone_data(new_data)
-        except Exception:
-            logging.exception("Error updating drone data")
-            return False
-        else:
-            return True
-
-    @pyqtSlot("QVariantMap", result=bool)
-    def add_ping(self, data: dict) -> bool:
-        """Add a new signal ping to the data manager."""
-        try:
-            ping_data = PingData(
-                frequency=data["frequency"],
-                amplitude=data["amplitude"],
-                lat=data["lat"],
-                long=data["long"],
-                timestamp=int(time.time() * 1000),
-            )
-            self._drone_data_manager.add_ping(ping_data)
-        except Exception:
-            logging.exception("Error adding ping data")
-            return False
-        else:
-            return True
-
-    @pyqtSlot("QVariantMap", result=bool)
-    def update_location_estimate(self, data: dict) -> bool:
-        """Update location estimate for a given frequency."""
-        try:
-            loc_est_data = LocEstData(
-                frequency=data["frequency"],
-                lat=data["lat"],
-                long=data["long"],
-                timestamp=int(time.time() * 1000),
-            )
-            self._drone_data_manager.update_location_estimate(loc_est_data)
-        except Exception:
-            logging.exception("Error updating location estimate")
-            return False
-        else:
-            return True
-
-    @pyqtSlot(int, result=bool)
-    def clear_frequency_data(self, frequency: int) -> bool:
-        """Clear all data for a specific frequency."""
-        try:
-            return self._drone_data_manager.clear_frequency_data(frequency)
-        except Exception:
-            logging.exception("Error clearing frequency data")
-            return False
-
-    @pyqtSlot(result=bool)
-    def clear_all_data(self) -> bool:
-        """Clear all signal and location data."""
-        try:
-            return self._drone_data_manager.clear_all_data()
-        except Exception:
-            logging.exception("Error clearing all data")
-            return False
-
-    @pyqtSlot()
-    def cancel_connection(self) -> None:
-        """Cancel the current connection attempt and clean up."""
-        logging.info("Cancelling connection")
-        if self._drone_comms:
-            try:
-                self._drone_comms.stop()
-            except RuntimeError:
-                # Thread might not be started in simulated mode
-                logging.debug("Thread not started, skipping stop")
-            self._drone_comms = None
-        self._sync_packet_id = None
-        self.connection_status.emit("Connection cancelled")
-
-    @pyqtSlot()
-    def disconnect(self) -> None:
-        """Send a stop request and wait for acknowledgment before disconnecting."""
-        logging.info("Disconnecting...")
-
-        if self._drone_comms:
-            try:
-                # Create an event loop to wait for acknowledgment
-                from PyQt6.QtCore import QEventLoop
-                loop = QEventLoop()
-                self._ack_received = False
-
-                # Send stop request and store packet ID
-                stop_request = StopRequestData()
-                self._stop_packet_id, _, _ = self._drone_comms.send_stop_request(stop_request)
-                self._expected_ack_id = self._stop_packet_id
-
-                # Calculate total timeout based on ack_timeout and max_retries
-                total_timeout = self._drone_comms.ack_timeout * self._drone_comms.max_retries
-                logging.info("Setting stop request timeout for %.1f seconds", total_timeout)
-
-                # Set up timer to check for ack and quit loop
-                def check_ack():
-                    if self._ack_received:
-                        loop.quit()
-
-                # Check every 100ms for ack
-                timer = QTimer()
-                timer.timeout.connect(check_ack)
-                timer.start(100)
-                QTimer.singleShot(int(total_timeout * 1000), loop.quit)  # Use calculated timeout
-                loop.exec()
-                timer.stop()
-
-                # Clear drone position on disconnect
-                self._drone_data_manager.update_drone_data(None)
-                try:
-                    self._drone_comms.stop()
-                except RuntimeError:
-                    # Thread might not be started in simulated mode
-                    logging.debug("Thread not started, skipping stop")
-                self._drone_comms = None
-                self._sync_packet_id = None
-                self._stop_packet_id = None
-                self._expected_ack_id = None
-                self.connection_status.emit("Disconnected")
-            except (ConnectionError, TimeoutError, OSError):
-                logging.warning("Failed to send stop request", exc_info=True)
-                # Still attempt cleanup on error
-                if self._drone_comms:
-                    try:
-                        self._drone_comms.stop()
-                    except RuntimeError:
-                        pass
-                    self._drone_comms = None
-                    self._sync_packet_id = None
-                    self._stop_packet_id = None
-                    self._expected_ack_id = None
-                    self.connection_status.emit("Disconnected")
-
+    # --------------------------------------------------------------------------
+    # LOGGING from frontend
+    # --------------------------------------------------------------------------
     @pyqtSlot(str)
     def log_message(self, message: str) -> None:
         """Log a message from the frontend."""
         logging.info("Frontend: %s", message)
 
+    # --------------------------------------------------------------------------
+    # INTERNAL UTILITY
+    # --------------------------------------------------------------------------
+    def _handle_sync_response(self, data: SyncResponseData) -> None:
+        """Called by DroneComms after sync response arrives (SyncResponseData)."""
+        if not isinstance(data, SyncResponseData):
+            logging.warning("Got invalid sync response data type: %s", data)
+            return
+
+        if not data.success:
+            logging.warning("Sync responded but reported GPS not ready.")
+            self.error_message.emit("Warning: GPS not ready or initialization incomplete.")
+        self.connection_status.emit("Drone connected successfully")
+
+    def _sync_timeout_check(self) -> None:
+        """Check if sync was acked. If not, emit sync_timeout."""
+        if not self._ack_received and self._sync_packet_id is not None:
+            logging.info("Emitting sync_timeout after ack not received.")
+            self.sync_timeout.emit()
+
     def _on_ack_success(self, packet_id: int) -> None:
-        """Global handler for successful packet acknowledgments."""
-        logging.info("Received ack for packet %d", packet_id)
+        """Callback when a packet ack is received."""
         if packet_id == self._expected_ack_id:
             self._ack_received = True
-            if packet_id == self._sync_packet_id:
-                logging.info("Sync request acknowledged")
-            elif packet_id == self._stop_packet_id:
-                logging.info("Stop request acknowledged")
+            logging.info("Packet %d ack received", packet_id)
 
     def _on_ack_timeout(self, packet_id: int) -> None:
-        """Global handler for packet acknowledgment timeouts."""
-        logging.warning("Ack timeout for packet %d", packet_id)
+        """Callback when a packet times out waiting for ack."""
         if packet_id == self._expected_ack_id:
+            logging.warning("Ack timeout for packet %d", packet_id)
             self._ack_received = False
-            if packet_id == self._sync_packet_id:
-                logging.warning("Sync request timed out")
-                self.sync_timeout.emit()
-            elif packet_id == self._stop_packet_id:
-                logging.warning("Stop request timed out")
+
+    def _stop_timeout_check(self) -> None:
+        """Check if stop ack was received, if not forcibly disconnect."""
+        if not self._ack_received and self._drone_comms_service:
+            logging.warning("Stop request timed out, forcibly cleaning up.")
+        self._cleanup_comms()
+
+    def _cleanup_comms(self) -> None:
+        """Stop comms, reset state, emit Disconnected."""
+        if self._drone_comms_service:
+            self._drone_comms_service.stop()
+            self._drone_comms_service = None
+        self._drone_data_manager.update_drone_data(None)
+        self._sync_packet_id = None
+        self._stop_packet_id = None
+        self._expected_ack_id = None
+        self.connection_status.emit("Disconnected")
+
+    def _get_error_message(self, error: Exception) -> str:
+        """Return a user-friendly error message for known connection issues."""
+        import serial
+
+        if isinstance(error, ConnectionRefusedError):
+            return "Connection refused.\nCheck if the simulator or device is running, or if the port is correct."
+        if isinstance(error, TimeoutError):
+            return "Connection timed out.\nCheck your network/serial connection, or adjust ack_timeout/max_retries."
+        if isinstance(error, ConnectionResetError):
+            return "Connection was reset by the remote device. Possibly server/client mode mismatch."
+        if isinstance(error, serial.serialutil.SerialException):
+            return f"Serial exception: {error!s}"
+        return f"Comms error: {error!s}"

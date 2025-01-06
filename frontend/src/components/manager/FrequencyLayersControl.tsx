@@ -1,8 +1,12 @@
 import React, { useContext } from 'react';
-import { MapContext } from '../../contexts/MapContext';
+import { GlobalAppContext } from '../../context/globalAppContextDef';
+import type { FrequencyLayer } from '../../types/global';
 
 const FrequencyLayersControl: React.FC = () => {
-    const { frequencyLayers, setFrequencyLayers } = useContext(MapContext);
+    const context = useContext(GlobalAppContext);
+    if (!context) throw new Error('FrequencyLayersControl must be in GlobalAppProvider');
+
+    const { frequencyLayers, setFrequencyLayers } = context;
 
     const clearFrequencyData = async (frequency: number) => {
         if (!window.backend) return;
@@ -17,8 +21,8 @@ const FrequencyLayersControl: React.FC = () => {
     };
 
     const toggleLayerVisibility = (frequency: number) => {
-        setFrequencyLayers((prev) =>
-            prev.map((layer) =>
+        setFrequencyLayers((prev: FrequencyLayer[]) =>
+            prev.map((layer: FrequencyLayer) =>
                 layer.frequency === frequency
                     ? { ...layer, visible: !layer.visible }
                     : layer
@@ -35,7 +39,7 @@ const FrequencyLayersControl: React.FC = () => {
             <div className="text-sm font-medium text-gray-700">
                 Frequency Layers
             </div>
-            {frequencyLayers.map((layer) => (
+            {frequencyLayers.map((layer: FrequencyLayer) => (
                 <div key={layer.frequency} className="bg-white/50 rounded-lg p-2 border border-gray-200">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">

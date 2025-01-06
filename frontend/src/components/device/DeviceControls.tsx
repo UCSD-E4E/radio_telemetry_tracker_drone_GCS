@@ -1,21 +1,18 @@
 import React, { useContext } from 'react';
-import { CommsContext } from '../../contexts/CommsContext';
+import { GlobalAppContext } from '../../context/globalAppContextDef';
 import CommsConfig from './comms/CommsConfig';
 import DroneStatus from './DroneStatus';
 
-const FieldDeviceControls: React.FC = () => {
-    const commsContext = useContext(CommsContext);
-    
-    if (!commsContext) {
-        throw new Error('FieldDeviceControls must be used within a CommsProvider');
-    }
+const DeviceControls: React.FC = () => {
+    const context = useContext(GlobalAppContext);
+    if (!context) throw new Error('DeviceControls must be used within GlobalAppProvider');
 
-    const { isConnected } = commsContext;
+    const { isConnected, setIsConnected } = context;
 
     const handleDisconnect = async () => {
-        const backend = await window.backend;
-        await backend.disconnect();
-        commsContext.setIsConnected(false);
+        if (!window.backend) return;
+        await window.backend.disconnect();
+        setIsConnected(false);
     };
 
     return (
@@ -36,7 +33,7 @@ const FieldDeviceControls: React.FC = () => {
                     <button
                         onClick={handleDisconnect}
                         className="w-full px-3 py-2 text-sm text-red-600 bg-white border 
-                                 border-red-200 rounded hover:bg-red-50 transition-colors"
+              border-red-200 rounded hover:bg-red-50 transition-colors"
                     >
                         Disconnect
                     </button>
@@ -46,4 +43,4 @@ const FieldDeviceControls: React.FC = () => {
     );
 };
 
-export default FieldDeviceControls; 
+export default DeviceControls;

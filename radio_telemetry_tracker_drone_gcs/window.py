@@ -1,7 +1,7 @@
-"""Main window module for the Radio Telemetry Tracker Drone Ground Control Station.
+"""Main window module for the Radio Telemetry Tracker Drone GCS.
 
-This module creates a QWebEngineView to display the frontend (React/Leaflet app).
-It injects QWebChannel code so the JS can communicate with Python via the CommunicationBridge.
+Creates a QWebEngineView to display the React/Leaflet frontend
+and injects QWebChannel code for communication with Python.
 """
 
 import logging
@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import QMainWindow
 
 
 class MainWindow(QMainWindow):
-    """Main window of the application using QWebEngineView for the frontend."""
+    """Main window using QWebEngineView for the frontend."""
 
     def __init__(self) -> None:
         """Initialize the main window."""
@@ -25,18 +25,18 @@ class MainWindow(QMainWindow):
         self.web_view = QWebEngineView()
         self.setCentralWidget(self.web_view)
 
-        # Set up the web channel for backend communication
+        # WebChannel
         self.channel = QWebChannel()
         self.bridge = None
         self.web_view.page().setWebChannel(self.channel)
 
-        # Enable developer tools
+        # Developer tools
         self.web_view.page().setDevToolsPage(self.web_view.page())
 
-        # Load finished handler
+        # Load completion
         self.web_view.loadFinished.connect(self._on_load_finished)
 
-        # Inject QWebChannel initialization script into the frontend
+        # Inject QWebChannel initialization
         script = QWebEngineScript()
         script.setName("qwebchannel")
         script.setSourceCode(
@@ -54,10 +54,10 @@ class MainWindow(QMainWindow):
         script.setRunsOnSubFrames(False)
         self.web_view.page().scripts().insert(script)
 
-        # Configure window size
+        # Window size
         self.resize(1280, 720)
 
-        # Load the local web content (frontend)
+        # Load local dist
         dist_path = Path(__file__).parent.parent / "frontend" / "dist" / "index.html"
         if not dist_path.exists():
             logging.error("Frontend dist not found at %s", dist_path)
@@ -69,17 +69,13 @@ class MainWindow(QMainWindow):
         self.web_view.setUrl(local_url)
 
     def _on_load_finished(self, *, ok: bool = True) -> None:
-        """Handle page load completion."""
         if ok:
             logging.info("Frontend loaded successfully")
         else:
             logging.error("Failed to load frontend")
 
     def set_bridge(self, bridge: object) -> None:
-        """Set the communication bridge object for backend communication.
-
-        Registers it on the WebChannel so JS can access `window.backend`.
-        """
+        """Register the Python comms bridge under 'backend'."""
         self.bridge = bridge
         self.channel.registerObject("backend", bridge)
         logging.info("Bridge registered with WebChannel")

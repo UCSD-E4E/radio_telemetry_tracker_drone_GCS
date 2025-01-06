@@ -5,16 +5,15 @@ import sys
 from PyQt6.QtWidgets import QApplication
 
 from radio_telemetry_tracker_drone_gcs.comms.communication_bridge import CommunicationBridge
-from radio_telemetry_tracker_drone_gcs.services.tile_server import init_db
+from radio_telemetry_tracker_drone_gcs.services.tile_db import init_db
 from radio_telemetry_tracker_drone_gcs.window import MainWindow
 
 
 def main() -> int:
     """Start the RTT Drone GCS application."""
-    # Initialize the tile database
+    # Initialize database
     init_db()
 
-    # Initialize and run the PyQt application
     app = QApplication(sys.argv)
     window = MainWindow()
 
@@ -24,6 +23,7 @@ def main() -> int:
 
     window.show()
     return app.exec()
+
 
 if __name__ == "__main__":
     sys.exit(main())

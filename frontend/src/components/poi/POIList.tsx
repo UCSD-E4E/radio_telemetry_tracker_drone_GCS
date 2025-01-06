@@ -1,5 +1,5 @@
 import React, { useContext, useState } from 'react';
-import { MapContext } from '../../contexts/MapContext';
+import { GlobalAppContext } from '../../context/globalAppContextDef';
 import type { POI } from '../../types/global';
 
 interface POIItemProps {
@@ -68,7 +68,10 @@ const POIItem: React.FC<POIItemProps> = ({ poi, onRemove, onGoto, onRename }) =>
 };
 
 const POIList: React.FC = () => {
-    const { pois, loadPOIs, removePOI, mapRef } = useContext(MapContext);
+    const context = useContext(GlobalAppContext);
+    if (!context) throw new Error('POIList must be used inside GlobalAppProvider');
+
+    const { pois, loadPOIs, removePOI, mapRef } = context;
 
     const handleRemovePOI = async (name: string) => {
         const success = await removePOI(name);
@@ -109,7 +112,9 @@ const POIList: React.FC = () => {
                         onRename={handleRenamePOI}
                     />
                 ))}
-                {pois.length === 0 && <div className="text-sm text-gray-400">No POIs found.</div>}
+                {pois.length === 0 && (
+                    <div className="text-sm text-gray-400">No POIs found.</div>
+                )}
             </div>
         </div>
     );

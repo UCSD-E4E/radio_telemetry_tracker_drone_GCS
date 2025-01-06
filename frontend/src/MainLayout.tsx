@@ -1,15 +1,10 @@
 import React, { useState } from 'react';
-import FieldDeviceControls from './components/fieldDevice/FieldDeviceControls';
-import FrequencyManager from './components/controlPanel/FrequencyManager';
+import DeviceControls from './components/device/DeviceControls';
+import FrequencyManager from './components/manager/FrequencyManager';
 import MapContainer from './components/map/MapContainer';
 import MapOverlayControls from './components/map/MapOverlayControls';
-import { DeviceIcon, MapIcon } from './components/icons';
+import { ComputerDesktopIcon, MapIcon } from '@heroicons/react/24/outline';
 
-/**
- * Main two-pane layout:
- * Left side: Leaflet map
- * Right side: Tabs for Field Device Controls or Frequency Manager.
- */
 const MainLayout: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'device' | 'map'>('device');
 
@@ -17,7 +12,6 @@ const MainLayout: React.FC = () => {
         <div className="h-screen w-screen flex bg-gray-50">
             {/* Sidebar */}
             <div className="w-96 card flex flex-col relative z-[2000]">
-                {/* Header */}
                 <div className="p-6 border-b border-gray-100">
                     <h1 className="text-2xl font-bold text-gray-800">
                         Radio Telemetry Tracker
@@ -27,33 +21,26 @@ const MainLayout: React.FC = () => {
                     </p>
                 </div>
 
-                {/* Tabs */}
                 <div className="flex px-4 pt-4">
-                    <TabButton 
+                    <TabButton
                         active={activeTab === 'device'}
                         onClick={() => setActiveTab('device')}
-                        icon={<DeviceIcon />}
+                        icon={<ComputerDesktopIcon className="w-5 h-5" />}
                         label="Field Device"
                     />
-                    <TabButton 
+                    <TabButton
                         active={activeTab === 'map'}
                         onClick={() => setActiveTab('map')}
-                        icon={<MapIcon />}
+                        icon={<MapIcon className="w-5 h-5" />}
                         label="Frequencies"
                     />
                 </div>
 
-                {/* Content */}
                 <div className="flex-1 overflow-y-auto p-4">
-                    {activeTab === 'device' ? (
-                        <FieldDeviceControls />
-                    ) : (
-                        <FrequencyManager />
-                    )}
+                    {activeTab === 'device' ? <DeviceControls /> : <FrequencyManager />}
                 </div>
             </div>
 
-            {/* Map */}
             <div className="flex-1 relative">
                 <MapContainer />
                 <MapOverlayControls />
@@ -73,12 +60,10 @@ const TabButton: React.FC<TabButtonProps> = ({ active, onClick, icon, label }) =
     <button
         onClick={onClick}
         className={`
-            flex items-center gap-2 px-4 py-3 rounded-t-lg transition-all duration-200 flex-1
-            ${active 
-                ? 'bg-white text-blue-500 shadow-sm' 
-                : 'text-gray-600 hover:text-blue-500 bg-gray-50'
-            }
-        `}
+      flex items-center gap-2 px-4 py-3 rounded-t-lg
+      transition-all duration-200 flex-1
+      ${active ? 'bg-white text-blue-500 shadow-sm' : 'text-gray-600 hover:text-blue-500 bg-gray-50'}
+    `}
     >
         {icon}
         <span className="text-sm font-medium">{label}</span>

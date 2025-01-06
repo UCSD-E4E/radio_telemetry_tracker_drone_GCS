@@ -2,7 +2,7 @@ import type { DroneData, PingData, LocEstData, POI, TileInfo } from '../types/gl
 
 export interface Signal<T> {
     connect: (callback: (data: T) => void) => void;
-    disconnect: (callback: (data: T) => void) => void;
+    disconnect: (callback?: (data: T) => void) => void;
 }
 
 export interface CommsConfig {
@@ -16,7 +16,6 @@ export interface CommsConfig {
     max_retries: number;
 }
 
-// For backward compatibility
 export type CommsConfiguration = CommsConfig;
 
 export interface TileOptions {
@@ -24,13 +23,13 @@ export interface TileOptions {
 }
 
 export interface DroneBackend {
-    // Connection methods
-    get_serial_ports: () => Promise<string[]>;
-    initialize_comms: (config: CommsConfig) => Promise<boolean>;
-    cancel_connection: () => void;
-    disconnect: () => void;
+    // Connection
+    get_serial_ports(): Promise<string[]>;
+    initialize_comms(config: CommsConfig): Promise<boolean>;
+    cancel_connection(): void;
+    disconnect(): void;
 
-    // Data update signals
+    // Data signals
     drone_data_updated: Signal<DroneData | { disconnected: true }>;
     ping_data_updated: Signal<PingData>;
     loc_est_data_updated: Signal<LocEstData>;
@@ -40,28 +39,28 @@ export interface DroneBackend {
     connection_status: Signal<string>;
     sync_timeout: Signal<void>;
 
-    // Tile methods
-    get_tile: (z: number, x: number, y: number, source: string, options: TileOptions) => Promise<string>;
-    get_tile_info: () => Promise<TileInfo>;
-    clear_tile_cache: () => Promise<boolean>;
-    tile_info_updated: Signal<TileInfo>;
+    // Tiles
+    get_tile(z: number, x: number, y: number, source: string, options: TileOptions): Promise<string>;
+    get_tile_info(): Promise<TileInfo>;
+    clear_tile_cache(): Promise<boolean>;
+    tile_info_updated?: Signal<TileInfo>;
 
-    // POI methods
-    get_pois: () => Promise<POI[]>;
-    add_poi: (name: string, coords: [number, number]) => Promise<boolean>;
-    remove_poi: (name: string) => Promise<boolean>;
-    rename_poi: (oldName: string, newName: string) => Promise<boolean>;
-    pois_updated: Signal<POI[]>;
+    // POIs
+    get_pois(): Promise<POI[]>;
+    add_poi(name: string, coords: [number, number]): Promise<boolean>;
+    remove_poi(name: string): Promise<boolean>;
+    rename_poi(oldName: string, newName: string): Promise<boolean>;
+    pois_updated?: Signal<POI[]>;
 
-    // Data management methods
-    update_drone_data: (data: DroneData) => Promise<boolean>;
-    add_ping: (data: PingData) => Promise<boolean>;
-    update_location_estimate: (data: LocEstData) => Promise<boolean>;
-    clear_frequency_data: (frequency: number) => Promise<boolean>;
-    clear_all_data: () => Promise<boolean>;
+    // Data
+    update_drone_data(data: DroneData): Promise<boolean>;
+    add_ping(data: PingData): Promise<boolean>;
+    update_location_estimate(data: LocEstData): Promise<boolean>;
+    clear_frequency_data(freq: number): Promise<boolean>;
+    clear_all_data(): Promise<boolean>;
 
     // Logging
-    log_message: (message: string) => void;
+    log_message(msg: string): void;
 }
 
 declare global {

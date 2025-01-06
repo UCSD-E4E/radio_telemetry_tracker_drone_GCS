@@ -22,7 +22,7 @@ const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
     }, [isHovered]);
 
     return (
-        <div 
+        <div
             ref={elementRef}
             className="relative inline-block"
             onMouseEnter={() => setIsHovered(true)}
@@ -30,9 +30,9 @@ const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
         >
             {children}
             {isHovered && createPortal(
-                <div 
+                <div
                     className="fixed z-[9999] pointer-events-none"
-                    style={{ 
+                    style={{
                         top: position.top,
                         left: position.left,
                     }}

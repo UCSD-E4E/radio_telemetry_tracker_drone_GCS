@@ -1,15 +1,21 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { CommsContext } from '../../../contexts/CommsContext';
+import { GlobalAppContext } from '../../../context/globalAppContextDef';
 import Tooltip from '../../common/Tooltip';
 import AdvancedCommsSettings from './AdvancedCommsSettings';
 import ErrorModal from './ErrorModal';
 import { fetchBackend } from '../../../utils/backend';
 
-const CommsConfig: React.FC = () => {
-    const context = useContext(CommsContext);
+// Heroicons
+import {
+    InformationCircleIcon,
+    ArrowPathIcon,
+    ExclamationCircleIcon,
+} from '@heroicons/react/24/outline';
 
+const CommsConfig: React.FC = () => {
+    const context = useContext(GlobalAppContext);
     if (!context) {
-        throw new Error('CommsConfig must be used within a CommsProvider');
+        throw new Error('CommsConfig must be used within GlobalAppProvider');
     }
 
     const {
@@ -53,13 +59,11 @@ const CommsConfig: React.FC = () => {
 
     useEffect(() => {
         loadSerialPorts();
-    }, [loadSerialPorts]);
-
-    useEffect(() => {
+        // Set defaults if needed
         setBaudRate(57600);
         setHost('localhost');
         setTcpPort(50000);
-    }, [setBaudRate, setHost, setTcpPort]);
+    }, [loadSerialPorts, setBaudRate, setHost, setTcpPort]);
 
     useEffect(() => {
         if (errorMessage && !errorMessage.startsWith('Warning:')) {
@@ -118,7 +122,7 @@ const CommsConfig: React.FC = () => {
         <div className="p-4 space-y-6 relative z-[1100]">
             {!isConnected && (
                 <>
-                    {/* Interface type */}
+                    {/* Interface Type */}
                     <div className="space-y-4">
                         <div className="flex gap-4">
                             <button
@@ -133,6 +137,7 @@ const CommsConfig: React.FC = () => {
                                     Connect directly to radio hardware
                                 </div>
                             </button>
+
                             <button
                                 onClick={() => setInterfaceType('simulated')}
                                 className={`flex-1 p-4 rounded-lg border-2 transition-colors ${interfaceType === 'simulated'
@@ -147,27 +152,28 @@ const CommsConfig: React.FC = () => {
                             </button>
                         </div>
 
-                        {/* Serial config */}
+                        {/* Serial Config */}
                         {interfaceType === 'serial' && (
                             <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
                                 <div>
                                     <div className="flex items-center gap-1 mb-2">
-                                        <label className="text-sm font-medium text-gray-700">Serial Port</label>
-                                        <Tooltip content="The COM or ttyUSB port where your radio device is connected (e.g. COM3 or ttyUSB0).">
-                                            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
+                                        <label className="text-sm font-medium text-gray-700">
+                                            Serial Port
+                                        </label>
+                                        <Tooltip content="The COM/ttyUSB port where your device is connected (e.g. COM3).">
+                                            <InformationCircleIcon className="w-4 h-4 text-gray-400" />
                                         </Tooltip>
                                     </div>
                                     <select
                                         value={selectedPort}
                                         onChange={(e) => setSelectedPort(e.target.value)}
                                         className="w-full px-3 py-2 bg-white border border-gray-300 
-                                       rounded-md shadow-sm focus:outline-none 
-                                       focus:ring-2 focus:ring-blue-500"
+                               rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     >
-                                        {serialPorts.length === 0 && <option value="">No serial ports found</option>}
-                                        {serialPorts.map((port: string) => (
+                                        {serialPorts.length === 0 && (
+                                            <option value="">No serial ports found</option>
+                                        )}
+                                        {serialPorts.map((port) => (
                                             <option key={port} value={port}>
                                                 {port}
                                             </option>
@@ -177,11 +183,11 @@ const CommsConfig: React.FC = () => {
 
                                 <div>
                                     <div className="flex items-center gap-1 mb-2">
-                                        <label className="text-sm font-medium text-gray-700">Baud Rate</label>
-                                        <Tooltip content="Must match your device's configured rate (e.g. 57600).">
-                                            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
+                                        <label className="text-sm font-medium text-gray-700">
+                                            Baud Rate
+                                        </label>
+                                        <Tooltip content="Must match your device's baud rate (e.g. 57600).">
+                                            <InformationCircleIcon className="w-4 h-4 text-gray-400" />
                                         </Tooltip>
                                     </div>
                                     <select
@@ -195,8 +201,7 @@ const CommsConfig: React.FC = () => {
                                             }
                                         }}
                                         className="w-full px-3 py-2 bg-white border border-gray-300 
-                                       rounded-md shadow-sm focus:outline-none 
-                                       focus:ring-2 focus:ring-blue-500"
+                               rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         disabled={isConnecting || isConnected}
                                     >
                                         <option value="4800">4800</option>
@@ -211,43 +216,44 @@ const CommsConfig: React.FC = () => {
                             </div>
                         )}
 
-                        {/* Simulated config */}
+                        {/* Simulated Config */}
                         {interfaceType === 'simulated' && (
                             <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
                                 <div>
                                     <div className="flex items-center gap-1 mb-2">
-                                        <label className="text-sm font-medium text-gray-700">Host</label>
-                                        <Tooltip content="Use 'localhost' for local, or remote IP for network.">
-                                            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
+                                        <label className="text-sm font-medium text-gray-700">
+                                            Host
+                                        </label>
+                                        <Tooltip content="Use 'localhost' for local, or a remote IP for network connections.">
+                                            <InformationCircleIcon className="w-4 h-4 text-gray-400" />
                                         </Tooltip>
                                     </div>
                                     <input
                                         type="text"
-                                        value={host || 'localhost'}
+                                        value={host || ''}
                                         onChange={(e) => setHost(e.target.value)}
                                         className="w-full px-3 py-2 bg-white border border-gray-300 
-                                       rounded-md shadow-sm focus:outline-none 
-                                       focus:ring-2 focus:ring-blue-500"
+                               rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     />
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-1 mb-2">
-                                        <label className="text-sm font-medium text-gray-700">TCP Port</label>
-                                        <Tooltip content="Port for TCP simulation. Default 50000.">
-                                            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
+                                        <label className="text-sm font-medium text-gray-700">
+                                            TCP Port
+                                        </label>
+                                        <Tooltip content="Port for TCP simulation. Default is 50000.">
+                                            <InformationCircleIcon className="w-4 h-4 text-gray-400" />
                                         </Tooltip>
                                     </div>
                                     <input
                                         type="number"
-                                        value={tcpPort?.toString() || '50000'}
-                                        onChange={(e) => setTcpPort(e.target.value ? parseInt(e.target.value) : null)}
+                                        value={tcpPort?.toString() || ''}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setTcpPort(val ? parseInt(val) : null);
+                                        }}
                                         className="w-full px-3 py-2 bg-white border border-gray-300 
-                                       rounded-md shadow-sm focus:outline-none 
-                                       focus:ring-2 focus:ring-blue-500"
+                               rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         disabled={isConnecting || isConnected}
                                     />
                                 </div>
@@ -255,14 +261,15 @@ const CommsConfig: React.FC = () => {
                         )}
                     </div>
 
-                    {/* Advanced settings */}
+                    {/* Advanced Settings */}
                     <button
                         type="button"
                         onClick={() => setShowAdvanced(!showAdvanced)}
                         className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
                     >
                         <svg
-                            className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-90' : ''}`}
+                            className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-90' : ''
+                                }`}
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -271,6 +278,7 @@ const CommsConfig: React.FC = () => {
                         </svg>
                         Advanced Settings
                     </button>
+
                     {showAdvanced && (
                         <AdvancedCommsSettings
                             ackTimeout={ackTimeout}
@@ -282,11 +290,13 @@ const CommsConfig: React.FC = () => {
                 </>
             )}
 
-            {/* Custom baud modal */}
+            {/* Custom Baud Modal */}
             {showCustomBaudRate && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999]">
                     <div className="bg-white rounded-lg p-6 w-96 space-y-4">
-                        <h3 className="text-lg font-medium text-gray-900">Custom Baud Rate</h3>
+                        <h3 className="text-lg font-medium text-gray-900">
+                            Custom Baud Rate
+                        </h3>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                                 Enter baud rate
@@ -296,8 +306,7 @@ const CommsConfig: React.FC = () => {
                                 value={customBaudRateInput}
                                 onChange={(e) => setCustomBaudRateInput(e.target.value)}
                                 className="w-full px-3 py-2 border border-gray-300 
-                                       rounded-md shadow-sm focus:outline-none 
-                                       focus:ring-2 focus:ring-blue-500"
+                           rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 placeholder="e.g. 250000"
                                 autoFocus
                                 onKeyDown={(e) => {
@@ -317,15 +326,15 @@ const CommsConfig: React.FC = () => {
                                     setCustomBaudRateInput('');
                                 }}
                                 className="px-4 py-2 text-sm font-medium text-gray-700 
-                                       hover:bg-gray-50 border border-gray-300 
-                                       rounded-md focus:outline-none"
+                           hover:bg-gray-50 border border-gray-300 
+                           rounded-md focus:outline-none"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleCustomBaudRate}
                                 className="px-4 py-2 text-sm font-medium text-white 
-                                       bg-blue-500 hover:bg-blue-600 rounded-md focus:outline-none"
+                           bg-blue-500 hover:bg-blue-600 rounded-md focus:outline-none"
                             >
                                 Apply
                             </button>
@@ -334,39 +343,24 @@ const CommsConfig: React.FC = () => {
                 </div>
             )}
 
-            {/* Connection progress */}
+            {/* Connection Progress */}
             <div className="space-y-3">
-                {/* Buttons */}
                 <div className="flex gap-2">
                     {!isConnected && !isConnecting && !waitingForSync && (
                         <button
                             onClick={handleConnect}
                             className="flex-1 px-4 py-3 bg-blue-500 hover:bg-blue-600 
-                                     text-white rounded-lg shadow-sm hover:shadow-md 
-                                     focus:outline-none transition-all duration-200 font-medium"
+                         text-white rounded-lg shadow-sm hover:shadow-md 
+                         focus:outline-none transition-all duration-200 font-medium"
                         >
                             Connect
                         </button>
                     )}
+
                     {(isConnecting || waitingForSync) && (
                         <div className="flex flex-col gap-2 flex-1">
                             <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                <svg className="animate-spin h-6 w-6 text-blue-500 flex-shrink-0" viewBox="0 0 24 24">
-                                    <circle
-                                        className="opacity-25"
-                                        cx="12"
-                                        cy="12"
-                                        r="10"
-                                        stroke="currentColor"
-                                        strokeWidth="4"
-                                        fill="none"
-                                    />
-                                    <path
-                                        className="opacity-75"
-                                        fill="currentColor"
-                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                    />
-                                </svg>
+                                <ArrowPathIcon className="animate-spin h-6 w-6 text-blue-500 flex-shrink-0" />
                                 <div className="flex-1">
                                     <div className="text-sm text-blue-700">
                                         {connectionStatus}
@@ -382,9 +376,9 @@ const CommsConfig: React.FC = () => {
                                 <button
                                     onClick={handleCancel}
                                     className="w-full px-4 py-3 text-red-600 bg-white border-2 
-                                    border-red-600 rounded-lg hover:bg-red-50 shadow-sm 
-                                    hover:shadow-md focus:outline-none focus:ring-2 
-                                    focus:ring-red-500 transition-all duration-200 font-medium"
+                             border-red-600 rounded-lg hover:bg-red-50 shadow-sm 
+                             hover:shadow-md focus:outline-none focus:ring-2 
+                             focus:ring-red-500 transition-all duration-200 font-medium"
                                 >
                                     Cancel Connection
                                 </button>
@@ -404,38 +398,35 @@ const CommsConfig: React.FC = () => {
                             <div className="flex items-center gap-2 text-green-700">
                                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
                                     <path
-                                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                        d="M9 12l2 2 4-4m6 2a9 9 0 
+                      11-18 0 9 9 0 0118 0z"
                                         stroke="currentColor"
                                         strokeWidth={2}
                                         strokeLinecap="round"
                                         strokeLinejoin="round"
                                     />
                                 </svg>
-                                <span className="font-medium">Successfully connected to drone</span>
+                                <span className="font-medium">
+                                    Successfully connected to drone
+                                </span>
                             </div>
                         </div>
                         {errorMessage && errorMessage.startsWith('Warning:') && (
                             <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                                 <div className="flex items-center gap-2 text-yellow-700">
-                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                                            stroke="currentColor"
-                                            strokeWidth={2}
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                        />
-                                    </svg>
-                                    <span className="font-medium">{errorMessage.substring(8)}</span>
+                                    <ExclamationCircleIcon className="w-5 h-5" />
+                                    <span className="font-medium">
+                                        {errorMessage.substring(8)}
+                                    </span>
                                 </div>
                             </div>
                         )}
                         <button
                             onClick={handleDisconnect}
                             className="w-full px-4 py-3 text-red-600 bg-white border-2 
-                            border-red-600 rounded-lg hover:bg-red-50 shadow-sm 
-                            hover:shadow-md focus:outline-none focus:ring-2 
-                            focus:ring-red-500 transition-all duration-200 font-medium"
+                         border-red-600 rounded-lg hover:bg-red-50 shadow-sm 
+                         hover:shadow-md focus:outline-none focus:ring-2 
+                         focus:ring-red-500 transition-all duration-200 font-medium"
                         >
                             Disconnect
                         </button>

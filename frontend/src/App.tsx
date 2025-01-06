@@ -1,14 +1,14 @@
-import { CommsProvider } from './contexts/CommsProvider';
-import { MapProvider } from './contexts/MapContext';
+import GlobalAppProvider from './context/GlobalAppContext';
 import MainLayout from './MainLayout';
 
+/**
+ * Wrap everything in GlobalAppProvider for both comms and map states.
+ */
 function App() {
     return (
-        <CommsProvider>
-            <MapProvider>
-                <MainLayout />
-            </MapProvider>
-        </CommsProvider>
+        <GlobalAppProvider>
+            <MainLayout />
+        </GlobalAppProvider>
     );
 }
 

@@ -1,4 +1,5 @@
-"""Data management package for the Radio Telemetry Tracker Drone Ground Control Station.
+"""Data management package.
 
-Contains modules for managing drone telemetry, signal data, and location estimates.
+- drone_data_manager.py: In-memory store for drone data & signals
+- models.py: Dataclasses for DroneData, PingData, etc.
 """

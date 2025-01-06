@@ -1,15 +1,16 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { MapContainer as LeafletMap, useMap, TileLayer } from 'react-leaflet';
-import type { TileEvent, Map } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { Map } from 'leaflet';
+import type { TileEvent } from 'leaflet';
 import ZoomControl from './ZoomControl';
 import DataLayers from './DataLayers';
-import { MapContext } from '../../contexts/MapContext';
+import { GlobalAppContext } from '../../context/globalAppContextDef';
 
 const DEFAULT_CENTER: [number, number] = [32.8801, -117.2340];
 const DEFAULT_ZOOM = 13;
 
-// Custom TileLayer that uses WebChannel
+// A custom tile layer hooking into the backend
 const CustomTileLayer: React.FC<{
     source: string;
     isOffline: boolean;
@@ -22,38 +23,24 @@ const CustomTileLayer: React.FC<{
 
     useEffect(() => {
         const initBackend = async () => {
-            await new Promise(resolve => {
-                if (window.backendLoaded) {
-                    resolve(true);
-                } else {
-                    window.addEventListener('backendLoaded', () => resolve(true), { once: true });
-                }
+            await new Promise<void>((resolve) => {
+                if (window.backendLoaded) resolve();
+                else window.addEventListener('backendLoaded', () => resolve(), { once: true });
             });
             setIsBackendReady(true);
         };
-
         initBackend();
     }, []);
 
     const eventHandlers = {
-        tileloadstart: async (event: TileEvent) => {
-            if (!isBackendReady) {
-                console.log('Waiting for backend to be ready...');
-                return;
-            }
-
-            const tile = event.tile as HTMLImageElement;
-            const coords = event.coords;
-            
+        tileloadstart: async (evt: TileEvent) => {
+            if (!isBackendReady) return;
+            const tile = evt.tile as HTMLImageElement;
+            const coords = evt.coords;
             try {
-                const tileData = await window.backend.get_tile(
-                    coords.z,
-                    coords.x,
-                    coords.y,
-                    source,
-                    { offline: isOffline }
-                );
-                
+                const tileData = await window.backend.get_tile(coords.z, coords.x, coords.y, source, {
+                    offline: isOffline,
+                });
                 if (tileData) {
                     tile.src = `data:image/png;base64,${tileData}`;
                 } else if (isOffline) {
@@ -62,7 +49,7 @@ const CustomTileLayer: React.FC<{
             } catch (err) {
                 console.error('Error loading tile:', err);
             }
-        }
+        },
     };
 
     return (
@@ -79,17 +66,19 @@ const CustomTileLayer: React.FC<{
 
 const FixMapSize: React.FC = () => {
     const map = useMap();
-    React.useEffect(() => {
+    useEffect(() => {
         map.invalidateSize();
     }, [map]);
     return null;
 };
 
 const MapContainer: React.FC = () => {
-    const { currentSource, isOffline, mapRef } = useContext(MapContext);
+    const context = useContext(GlobalAppContext);
+    if (!context) throw new Error('MapContainer must be in GlobalAppProvider');
+
+    const { currentSource, isOffline, mapRef } = context;
     const [tileError, setTileError] = useState<string | null>(null);
 
-    // Clear error when source or mode changes
     useEffect(() => {
         setTileError(null);
     }, [currentSource.id, isOffline]);
@@ -114,7 +103,9 @@ const MapContainer: React.FC = () => {
                     attribution={currentSource.attribution}
                     maxZoom={currentSource.maxZoom}
                     minZoom={currentSource.minZoom}
-                    onOfflineMiss={() => setTileError('Some tiles are not available offline. Please cache them in online mode first.')}
+                    onOfflineMiss={() =>
+                        setTileError('Some tiles are not available offline. Please cache them in online mode first.')
+                    }
                 />
                 <FixMapSize />
                 <ZoomControl />

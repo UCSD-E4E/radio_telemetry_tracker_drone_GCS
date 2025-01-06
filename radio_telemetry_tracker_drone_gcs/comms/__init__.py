@@ -1,4 +1,7 @@
-"""Communications package for the Radio Telemetry Tracker Drone Ground Control Station.
+"""Communications package for the Radio Telemetry Tracker Drone GCS.
 
-Contains modules for handling communication with the drone via serial or simulated connections.
+Contains modules:
+- communication_bridge.py: QWebChannel <-> Python bridging
+- drone_comms_service.py: DroneComms logic (sync, stop requests, etc.)
+- gps_handler.py: GPS data transformations
 """

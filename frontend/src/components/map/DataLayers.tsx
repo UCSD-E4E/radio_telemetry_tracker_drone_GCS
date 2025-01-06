@@ -1,33 +1,41 @@
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
-import type { DroneData } from '../../types/global';
 import { formatDistanceToNow, isValid } from 'date-fns';
 import { logToPython } from '../../utils/logging';
+import type { DroneData, TimeoutRef } from '../../types/global';
 
-const LoadingIndicator: React.FC<{ loading: boolean }> = ({ loading }) => {
+// Heroicon spinner
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
+
+interface LoadingIndicatorProps {
+    loading: boolean;
+}
+
+const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({ loading }) => {
     if (!loading) return null;
 
+    // Display a small popover near the top/center of the map
     return (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-white/90 px-3 py-1 rounded-full shadow-md z-[1000] text-sm">
-            Loading tiles...
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-white/90 px-3 py-1 rounded-full shadow-md z-[1000] flex items-center gap-2 text-sm text-blue-700">
+            <ArrowPathIcon className="w-5 h-5 animate-spin" />
+            <span>Loading tiles...</span>
         </div>
     );
 };
 
 const DataLayers: React.FC = () => {
     const map = useMap();
-    const droneMarkerRef = React.useRef<L.Marker | null>(null);
-    const lastUpdateRef = React.useRef<number>(0);
+    const droneMarkerRef = useRef<L.Marker | null>(null);
+    const lastUpdateRef = useRef<number>(0);
     const [isLoading, setIsLoading] = useState(false);
-    const loadingTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+    const loadingTimeoutRef = useRef<TimeoutRef | null>(null);
 
-    // Handle map movement and zoom events
+    // Show/hide a loading indicator while the map is moving or zooming
     useEffect(() => {
         if (!map) return;
 
         const handleMoveStart = () => {
-            // Clear any existing timeout
             if (loadingTimeoutRef.current) {
                 clearTimeout(loadingTimeoutRef.current);
             }
@@ -35,10 +43,10 @@ const DataLayers: React.FC = () => {
         };
 
         const handleMoveEnd = () => {
-            // Set a timeout to hide the loading indicator
+            // Wait 1 second after movement stops before hiding
             loadingTimeoutRef.current = setTimeout(() => {
                 setIsLoading(false);
-            }, 1000); // Wait 1 second after movement stops
+            }, 1000);
         };
 
         map.on('movestart', handleMoveStart);
@@ -51,6 +59,7 @@ const DataLayers: React.FC = () => {
             map.off('moveend', handleMoveEnd);
             map.off('zoomstart', handleMoveStart);
             map.off('zoomend', handleMoveEnd);
+
             if (loadingTimeoutRef.current) {
                 clearTimeout(loadingTimeoutRef.current);
             }
@@ -59,103 +68,104 @@ const DataLayers: React.FC = () => {
 
     const formatLastUpdate = useCallback((timestamp: number | undefined) => {
         try {
-            if (!timestamp) {
-                return 'Last update: unknown';
-            }
+            if (!timestamp) return 'Last update: unknown';
 
-            // Create a Date object from the timestamp
             const date = new Date(timestamp);
-            if (!isValid(date)) {
-                return 'Last update: unknown';
-            }
+            if (!isValid(date)) return 'Last update: unknown';
 
-            // Format relative to now
+            // Format relative to "now"
             return `Last update: ${formatDistanceToNow(date, { addSuffix: true, includeSeconds: true })}`;
-        } catch (error) {
-            logToPython(`Error formatting timestamp: ${error}`);
+        } catch (err) {
+            logToPython(`Error formatting timestamp: ${err}`);
             return 'Last update: unknown';
         }
     }, []);
 
-    // SVG path for a drone icon (already faces north at 0 degrees)
-    const droneIconSvg = `
+    // The drone marker is still a custom inline SVG, 
+    // because there's no standard heroicon for a drone
+    const droneIconSvg = useMemo(() => `
         <div class="relative w-[20px] h-[20px]">
             <div class="absolute inset-0 flex items-center justify-center">
                 <div class="drone-marker-pulse"></div>
             </div>
             <div class="absolute inset-0 flex items-center justify-center">
-                <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" style="transform: rotate(var(--rotation))">
+                <svg 
+                    viewBox="0 0 16 16" 
+                    width="16" 
+                    height="16" 
+                    fill="currentColor" 
+                    style="transform: rotate(var(--rotation))"
+                >
                     <path d="M7 0L6 2V5L0 9V11H1L6 10L7 13L5 14V16H11V14L9 13L10 10L15 11H16V9L10 5V2L9 0H7Z"/>
                 </svg>
             </div>
         </div>
-    `;
+    `, []);
 
-    const drawDroneMarker = useCallback((data: DroneData | { disconnected: true }) => {
-        if (!map) return;
+    const drawDroneMarker = useCallback(
+        (data: DroneData | { disconnected: true }) => {
+            if (!map) return;
 
-        if ('disconnected' in data) {
-            // Update existing marker to show disconnected state
-            if (droneMarkerRef.current) {
-                const icon = droneMarkerRef.current.getIcon();
-                if (icon instanceof L.DivIcon) {
-                    // Extract current rotation from the existing HTML if possible
-                    const html = icon.options.html;
-                    let currentRotation = "0";
-                    if (typeof html === 'string') {
-                        const match = html.match(/--rotation:\s*([^deg]*)/);
-                        if (match && match[1]) {
-                            currentRotation = match[1];
+            if ('disconnected' in data) {
+                // If we detect a "disconnected" state, show a 'drone-marker-disconnected'
+                if (droneMarkerRef.current) {
+                    const icon = droneMarkerRef.current.getIcon();
+                    if (icon instanceof L.DivIcon) {
+                        let currentRotation = '0';
+                        const html = icon.options.html;
+                        if (typeof html === 'string') {
+                            const match = html.match(/--rotation:\s*([^deg]+)/);
+                            if (match && match[1]) {
+                                currentRotation = match[1];
+                            }
                         }
+                        icon.options.html = `<div class="drone-marker-disconnected" style="--rotation: ${currentRotation}deg">${droneIconSvg}</div>`;
+                        droneMarkerRef.current.setIcon(icon);
                     }
-                    // Keep the same rotation, just change the color to gray
-                    icon.options.html = `<div class="drone-marker-disconnected" style="--rotation: ${currentRotation}deg">${droneIconSvg}</div>`;
-                    droneMarkerRef.current.setIcon(icon);
                 }
-                // Keep the last update time
+                return;
             }
-            return;
-        }
 
-        const { lat, long, heading, last_update } = data;
-        lastUpdateRef.current = last_update;
+            // Normal drone data
+            const { lat, long, heading, last_update } = data;
+            lastUpdateRef.current = last_update;
 
-        if (!droneMarkerRef.current) {
-            // Create new marker
-            droneMarkerRef.current = L.marker([lat, long], {
-                icon: L.divIcon({
+            if (!droneMarkerRef.current) {
+                // Create a new marker
+                const icon = L.divIcon({
                     className: 'drone-marker',
                     html: `<div class="drone-marker-active" style="--rotation: ${heading}deg">${droneIconSvg}</div>`,
                     iconSize: [20, 20],
                     iconAnchor: [10, 10],
-                }),
-            }).addTo(map);
+                });
+                const marker = L.marker([lat, long], { icon }).addTo(map);
+                droneMarkerRef.current = marker;
 
-            // Add tooltip showing last update time
-            droneMarkerRef.current.bindTooltip('', {
-                permanent: true,
-                direction: 'bottom',
-                offset: [0, 10],
-            });
-
-            // Update tooltip content immediately
-            droneMarkerRef.current.setTooltipContent(formatLastUpdate(data.last_update));
-        } else {
-            // Update existing marker
-            droneMarkerRef.current.setLatLng([lat, long]);
-            const icon = droneMarkerRef.current.getIcon();
-            if (icon instanceof L.DivIcon) {
-                icon.options.html = `<div class="drone-marker-active" style="--rotation: ${heading}deg">${droneIconSvg}</div>`;
-                droneMarkerRef.current.setIcon(icon);
+                // Bind a tooltip that shows last update time
+                marker.bindTooltip('', {
+                    permanent: true,
+                    direction: 'bottom',
+                    offset: [0, 10],
+                });
+                marker.setTooltipContent(formatLastUpdate(last_update));
+            } else {
+                // Update existing marker's position & rotation
+                droneMarkerRef.current.setLatLng([lat, long]);
+                const icon = droneMarkerRef.current.getIcon();
+                if (icon instanceof L.DivIcon) {
+                    icon.options.html = `<div class="drone-marker-active" style="--rotation: ${heading}deg">${droneIconSvg}</div>`;
+                    droneMarkerRef.current.setIcon(icon);
+                }
+                // Update tooltip
+                if (droneMarkerRef.current.getTooltip()) {
+                    droneMarkerRef.current.setTooltipContent(formatLastUpdate(last_update));
+                }
             }
+        },
+        [map, formatLastUpdate, droneIconSvg]
+    );
 
-            // Update tooltip content
-            if (droneMarkerRef.current.getTooltip()) {
-                droneMarkerRef.current.setTooltipContent(formatLastUpdate(data.last_update));
-            }
-        }
-    }, [map, formatLastUpdate]);
-
+    // Connect to the drone_data_updated signal
     useEffect(() => {
         if (!window.backend?.drone_data_updated) return;
 
@@ -165,22 +175,28 @@ const DataLayers: React.FC = () => {
 
         window.backend.drone_data_updated.connect(handleDroneDataUpdated);
 
-        // Update tooltip every minute
-        const interval = setInterval(() => {
-            if (droneMarkerRef.current && droneMarkerRef.current.getTooltip() && lastUpdateRef.current) {
-                droneMarkerRef.current.setTooltipContent(formatLastUpdate(lastUpdateRef.current));
+        // Update the tooltip's timestamp every minute
+        const interval = window.setInterval(() => {
+            if (
+                droneMarkerRef.current &&
+                droneMarkerRef.current.getTooltip() &&
+                lastUpdateRef.current
+            ) {
+                droneMarkerRef.current.setTooltipContent(
+                    formatLastUpdate(lastUpdateRef.current)
+                );
             }
-        }, 60000);
+        }, 60_000);
 
         return () => {
             window.backend?.drone_data_updated?.disconnect(handleDroneDataUpdated);
-            clearInterval(interval);
+            window.clearInterval(interval);
             if (droneMarkerRef.current) {
                 droneMarkerRef.current.remove();
                 droneMarkerRef.current = null;
             }
         };
-    }, [drawDroneMarker]);
+    }, [drawDroneMarker, formatLastUpdate]);
 
     return <LoadingIndicator loading={isLoading} />;
 };
