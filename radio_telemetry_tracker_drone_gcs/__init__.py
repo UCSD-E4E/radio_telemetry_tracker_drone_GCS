@@ -1,1 +1,1 @@
-"""Radio Telemetry Tracker Drone Ground Control Station package."""
+"""Ground Control Station for Radio Telemetry Tracker drone operations and data visualization."""

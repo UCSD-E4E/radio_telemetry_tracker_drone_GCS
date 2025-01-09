@@ -1,112 +1,208 @@
-"""DroneCommsService wraps radio-telemetry-tracker-drone-comms-package."""
+"""Wraps user-provided DroneComms, handles start/stop, sending requests."""
 
 from __future__ import annotations
 
 import logging
-import time
 from typing import Callable
 
 from radio_telemetry_tracker_drone_comms_package import (
+    ConfigRequestData,
+    ConfigResponseData,
     DroneComms,
+    ErrorData,
+    GPSData,
+    LocEstData,
+    PingData,
     RadioConfig,
+    StartRequestData,
+    StartResponseData,
     StopRequestData,
+    StopResponseData,
+    SyncRequestData,
+    SyncResponseData,
 )
-from radio_telemetry_tracker_drone_comms_package import (
-    GPSData as DroneGPSData,
-)
-
-from radio_telemetry_tracker_drone_gcs.comms.connection_handler import ConnectionHandler
-from radio_telemetry_tracker_drone_gcs.data.models import ConnectionMetrics, DroneData
 
 
 class DroneCommsService:
-    """Manages the DroneComms lifecycle (start, stop), sync/stop requests, ack tracking, etc."""
+    """Manages DroneComms lifecycle and sending requests (sync, config, start, stop)."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
-        radio_config: RadioConfig | None = None,
-        on_drone_data: Callable[[DroneData], None] | None = None,
-        on_connection_metrics: Callable[[ConnectionMetrics], None] | None = None,
+        radio_config: RadioConfig,
+        ack_timeout: float,
+        max_retries: int,
         on_ack_success: Callable[[int], None] | None = None,
         on_ack_timeout: Callable[[int], None] | None = None,
-        ack_timeout: float = 1.0,
-        max_retries: int = 3,
     ) -> None:
-        """Initialize the drone communications service.
+        """Initialize drone communications service with radio config and acknowledgment settings.
 
         Args:
-            radio_config: Configuration for radio interface
-            on_drone_data: Callback for new drone position data
-            on_connection_metrics: Callback for connection quality updates
+            radio_config: Radio configuration parameters
+            ack_timeout: Time to wait for acknowledgment
+            max_retries: Maximum retry attempts for failed transmissions
             on_ack_success: Callback when acknowledgment received
-            on_ack_timeout: Callback when acknowledgment timeout
-            ack_timeout: Timeout for packet acknowledgment in seconds
-            max_retries: Maximum number of packet retries
+            on_ack_timeout: Callback when acknowledgment times out
         """
-        self._on_drone_data = on_drone_data
+        self.radio_config = radio_config
         self.ack_timeout = ack_timeout
         self.max_retries = max_retries
-        self._on_ack_success = on_ack_success
-
-        # Initialize connection handler
-        self._connection_handler = ConnectionHandler(
+        self._comms = DroneComms(
+            radio_config=radio_config,
             ack_timeout=ack_timeout,
             max_retries=max_retries,
-            on_metrics_updated=on_connection_metrics,
+            on_ack_success=on_ack_success,
+            on_ack_callback=on_ack_timeout,
         )
+        self._started = False
 
-        # Initialize DroneComms if radio_config provided
-        self._drone_comms = None
-        if radio_config is not None:
-            self._drone_comms = DroneComms(
-                radio_config=radio_config,
-                ack_timeout=ack_timeout,
-                max_retries=max_retries,
-                on_ack_success=self._on_ack_success,
-                on_ack_timeout=on_ack_timeout,
-            )
-
-    def handle_gps_data(self, data: DroneGPSData) -> None:
-        """Handle incoming GPS data from drone."""
+    def start(self) -> None:
+        """Start the drone communications service if not already running."""
+        if self._started:
+            return
         try:
-            # Update connection metrics first
-            self._connection_handler.handle_packet(packet_id=data.packet_id, timestamp_us=data.timestamp_us)
-
-            # Process GPS data
-            drone_data = DroneData(
-                lat=data.latitude,
-                long=data.longitude,
-                altitude=data.altitude,
-                heading=data.heading,
-                last_update=data.timestamp_us // 1000,  # Convert to ms
-            )
-            self._on_drone_data(drone_data)
-
+            self._comms.start()
+            self._started = True
+            logging.info("DroneCommsService started.")
         except Exception:
-            logging.exception("Error handling GPS data")
+            logging.exception("Error starting DroneCommsService")
+            raise
 
-    def register_gps_handler(self, callback: Callable[[dict], None]) -> None:
-        """Register a handler for GPS data messages from the drone."""
-        self._drone_comms.register_gps_handler(callback)
+    def stop(self) -> None:
+        """Stop the drone communications service and clean up resources."""
+        if not self._started:
+            logging.debug("DroneCommsService never started, skip stop.")
+            return
+        try:
+            self._comms.stop()
+        except RuntimeError:
+            logging.debug("DroneComms thread not running or already stopped.")
+        self._started = False
+        logging.info("DroneCommsService stopped.")
 
-    def send_stop_request(self) -> int:
-        """Send a stop request. Returns the packet_id for tracking."""
-        stop_data = StopRequestData()
-        packet_id, _, _ = self._drone_comms.send_stop_request(stop_data)
-        # Update connection metrics for this packet too
-        self._connection_handler.handle_packet(packet_id=packet_id, timestamp_us=int(time.time() * 1_000_000))
+    # Registration for packet handlers
+    def register_sync_response_handler(
+        self,
+        callback: Callable[[SyncResponseData], None],
+        *,
+        once: bool = True,
+    ) -> None:
+        """Register a callback to handle sync response packets from the drone."""
+        self._comms.register_sync_response_handler(callback, once=once)
+
+    def unregister_sync_response_handler(self, callback: Callable[[SyncResponseData], None]) -> None:
+        """Unregister a callback to handle sync response packets from the drone."""
+        self._comms.unregister_sync_response_handler(callback)
+
+    def register_config_response_handler(
+        self,
+        callback: Callable[[ConfigResponseData], None],
+        *,
+        once: bool = True,
+    ) -> None:
+        """Register a callback to handle config response packets from the drone."""
+        self._comms.register_config_response_handler(callback, once=once)
+
+    def unregister_config_response_handler(self, callback: Callable[[ConfigResponseData], None]) -> None:
+        """Unregister a callback to handle config response packets from the drone."""
+        self._comms.unregister_config_response_handler(callback)
+
+    def register_start_response_handler(
+        self,
+        callback: Callable[[StartResponseData], None],
+        *,
+        once: bool = True,
+    ) -> None:
+        """Register a callback to handle start response packets from the drone."""
+        self._comms.register_start_response_handler(callback, once=once)
+
+    def unregister_start_response_handler(self, callback: Callable[[StartResponseData], None]) -> None:
+        """Unregister a callback to handle start response packets from the drone."""
+        self._comms.unregister_start_response_handler(callback)
+
+    def register_stop_response_handler(
+        self,
+        callback: Callable[[StopResponseData], None],
+        *,
+        once: bool = True,
+    ) -> None:
+        """Register a callback to handle stop response packets from the drone."""
+        self._comms.register_stop_response_handler(callback, once=once)
+
+    def unregister_stop_response_handler(self, callback: Callable[[StopResponseData], None]) -> None:
+        """Unregister a callback to handle stop response packets from the drone."""
+        self._comms.unregister_stop_response_handler(callback)
+
+    def register_gps_handler(
+        self,
+        callback: Callable[[GPSData], None],
+        *,
+        once: bool = True,
+    ) -> None:
+        """Register a callback to handle GPS data packets from the drone."""
+        self._comms.register_gps_handler(callback, once=once)
+
+    def unregister_gps_handler(self, callback: Callable[[GPSData], None]) -> None:
+        """Unregister a callback to handle GPS data packets from the drone."""
+        self._comms.unregister_gps_handler(callback)
+
+    def register_ping_handler(
+        self,
+        callback: Callable[[PingData], None],
+        *,
+        once: bool = True,
+    ) -> None:
+        """Register a callback to handle ping packets from the drone."""
+        self._comms.register_ping_handler(callback, once=once)
+
+    def unregister_ping_handler(self, callback: Callable[[PingData], None]) -> None:
+        """Unregister a callback to handle ping packets from the drone."""
+        self._comms.unregister_ping_handler(callback)
+
+    def register_loc_est_handler(
+        self,
+        callback: Callable[[LocEstData], None],
+        *,
+        once: bool = True,
+    ) -> None:
+        """Register a callback to handle location estimation data packets from the drone."""
+        self._comms.register_loc_est_handler(callback, once=once)
+
+    def register_error_handler(
+        self,
+        callback: Callable[[ErrorData], None],
+        *,
+        once: bool = True,
+    ) -> None:
+        """Register a callback to handle error data packets from the drone."""
+        self._comms.register_error_handler(callback, once=once)
+
+    def unregister_error_handler(self, callback: Callable[[ErrorData], None]) -> None:
+        """Unregister a callback to handle error data packets from the drone."""
+        self._comms.unregister_error_handler(callback)
+
+    # Sending requests
+    def send_sync_request(self) -> int:
+        """Send a sync request to the drone and return the packet ID."""
+        data = SyncRequestData(
+            ack_timeout=self.ack_timeout,
+            max_retries=self.max_retries,
+        )
+        packet_id, need_ack, ts = self._comms.send_sync_request(data)
         return packet_id
 
-    @property
-    def ack_timeout_s(self) -> float:
-        """Expose the ack timeout in seconds."""
-        return self.ack_timeout
+    def send_config_request(self, cfg: ConfigRequestData) -> int:
+        """Send a configuration request to the drone and return the packet ID."""
+        packet_id, need_ack, ts = self._comms.send_config_request(cfg)
+        return packet_id
 
-    @property
-    def retries(self) -> int:
-        """Get the maximum number of retries for packet acknowledgment."""
-        return self.max_retries
+    def send_start_request(self) -> int:
+        """Send a start request to the drone and return the packet ID."""
+        req = StartRequestData()
+        packet_id, need_ack, ts = self._comms.send_start_request(req)
+        return packet_id
 
-
-# Re-export RadioConfig for use by communication_bridge
-__all__ = ["DroneCommsService", "RadioConfig"]
+    def send_stop_request(self) -> int:
+        """Send a stop request to the drone and return the packet ID."""
+        req = StopRequestData()
+        packet_id, need_ack, ts = self._comms.send_stop_request(req)
+        return packet_id

@@ -9,6 +9,32 @@ declare global {
 
 export type TimeoutRef = ReturnType<typeof setTimeout>;
 
+export interface GpsData {
+    lat: number;
+    long: number;
+    altitude: number;
+    heading: number;
+    timestamp: number;
+    packet_id: number;
+}
+
+export interface PingData {
+    frequency: number;
+    amplitude: number;
+    lat: number;
+    long: number;
+    timestamp: number;
+    packet_id: number;
+}
+
+export interface LocEstData {
+    frequency: number;
+    lat: number;
+    long: number;
+    timestamp: number;
+    packet_id: number;
+}
+
 export interface POI {
     name: string;
     coords: [number, number];
@@ -19,58 +45,30 @@ export interface TileInfo {
     total_size_mb: number;
 }
 
-export interface DroneData {
-    lat: number;
-    long: number;
-    altitude: number;
-    heading: number;
-    last_update: number;
+export interface RadioConfig {
+    interface_type: 'serial' | 'simulated';
+    port: string;
+    baudrate: number;
+    host: string;
+    tcp_port: number;
+    ack_timeout: number;
+    max_retries: number;
 }
 
-export interface ConnectionMetrics {
-    ping_time: number;
-    packet_loss: number;
-    connection_quality: 'great' | 'good' | 'ok' | 'bad' | 'critical';
-    last_update: number;
+export interface PingFinderConfig {
+    gain: number;
+    sampling_rate: number;
+    center_frequency: number;
+    enable_test_data: boolean;
+    ping_width_ms: number;
+    ping_min_snr: number;
+    ping_max_len_mult: number;
+    ping_min_len_mult: number;
+    target_frequencies: number[];
 }
 
-export interface PingData {
-    frequency: number;
-    amplitude: number;
-    lat: number;
-    long: number;
-    timestamp: number;
-}
-
-export interface PingDataUpdate {
-    frequency: number;
-    cleared?: true;
-    amplitude?: number;
-    lat?: number;
-    long?: number;
-    timestamp?: number;
-}
-
-export interface LocEstData {
-    frequency: number;
-    lat: number;
-    long: number;
-    timestamp: number;
-}
-
-export interface LocEstDataUpdate {
-    frequency: number;
-    cleared?: true;
-    lat?: number;
-    long?: number;
-    timestamp?: number;
-}
-
-export interface FrequencyLayer {
-    frequency: number;
-    pings: PingData[];
-    locationEstimate: LocEstData | null;
-    visible: boolean;
+export interface TileOptions {
+    offline: boolean;
 }
 
 export { };

@@ -1,8 +1,4 @@
-"""Main window module for the Radio Telemetry Tracker Drone GCS.
-
-Creates a QWebEngineView to display the React/Leaflet frontend
-and injects QWebChannel code for communication with Python.
-"""
+"""Main PyQt window with QWebEngineView to load the React/Leaflet frontend."""
 
 import logging
 from pathlib import Path
@@ -15,28 +11,26 @@ from PyQt6.QtWidgets import QMainWindow
 
 
 class MainWindow(QMainWindow):
-    """Main window using QWebEngineView for the frontend."""
+    """Main application window that hosts the web-based frontend using QWebEngineView."""
 
     def __init__(self) -> None:
-        """Initialize the main window."""
+        """Initialize the main window and set up the web view with communication bridge."""
         super().__init__()
         self.setWindowTitle("Radio Telemetry Tracker Drone GCS")
 
         self.web_view = QWebEngineView()
         self.setCentralWidget(self.web_view)
 
-        # WebChannel
         self.channel = QWebChannel()
         self.bridge = None
         self.web_view.page().setWebChannel(self.channel)
 
-        # Developer tools
+        # Dev tools
         self.web_view.page().setDevToolsPage(self.web_view.page())
 
-        # Load completion
         self.web_view.loadFinished.connect(self._on_load_finished)
 
-        # Inject QWebChannel initialization
+        # Insert QWebChannel script
         script = QWebEngineScript()
         script.setName("qwebchannel")
         script.setSourceCode(
@@ -54,10 +48,8 @@ class MainWindow(QMainWindow):
         script.setRunsOnSubFrames(False)
         self.web_view.page().scripts().insert(script)
 
-        # Window size
         self.resize(1280, 720)
 
-        # Load local dist
         dist_path = Path(__file__).parent.parent / "frontend" / "dist" / "index.html"
         if not dist_path.exists():
             logging.error("Frontend dist not found at %s", dist_path)
@@ -75,7 +67,7 @@ class MainWindow(QMainWindow):
             logging.error("Failed to load frontend")
 
     def set_bridge(self, bridge: object) -> None:
-        """Register the Python comms bridge under 'backend'."""
+        """Register the communication bridge object with the web channel."""
         self.bridge = bridge
         self.channel.registerObject("backend", bridge)
         logging.info("Bridge registered with WebChannel")

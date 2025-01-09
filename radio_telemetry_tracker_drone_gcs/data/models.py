@@ -1,41 +1,35 @@
-"""Data models for storing drone position, ping data, location estimates, etc."""
+"""Data models for internal representation of drone telemetry data."""
 
 from dataclasses import dataclass
 
 
 @dataclass
-class ConnectionMetrics:
-    """Represents connection quality metrics based on packet delivery."""
-    ping_time: int  # ms
-    packet_loss: float  # percentage
-    connection_quality: str  # 'great', 'good', 'ok', 'bad', 'critical'
-    last_update: int  # ms
-
-
-@dataclass
-class DroneData:
-    """Represents current drone state including position."""
+class GpsData:
+    """GPS position data from the drone including latitude, longitude, altitude, and heading."""
     lat: float
     long: float
     altitude: float
     heading: float
-    last_update: int  # ms
+    timestamp: int
+    packet_id: int
 
 
 @dataclass
 class PingData:
-    """Represents a single ping detection with frequency, amplitude, and location."""
+    """Radio ping detection data including frequency, amplitude, and location."""
     frequency: int
     amplitude: float
     lat: float
     long: float
-    timestamp: int  # ms
+    timestamp: int
+    packet_id: int
 
 
 @dataclass
 class LocEstData:
-    """Represents an estimated location for a frequency based on ping detections."""
+    """Location estimate data for a specific frequency based on ping detections."""
     frequency: int
     lat: float
     long: float
-    timestamp: int  # ms
+    timestamp: int
+    packet_id: int

@@ -1,4 +1,4 @@
-"""Main entry point for the Radio Telemetry Tracker Drone Ground Control Station."""
+"""Main entry point for the RTT Drone GCS application."""
 
 import sys
 
@@ -11,13 +11,13 @@ from radio_telemetry_tracker_drone_gcs.window import MainWindow
 
 def main() -> int:
     """Start the RTT Drone GCS application."""
-    # Initialize database
+    # Initialize DB (tiles + POIs)
     init_db()
 
     app = QApplication(sys.argv)
     window = MainWindow()
 
-    # Create the communication bridge
+    # Create bridging object
     bridge = CommunicationBridge()
     window.set_bridge(bridge)
 

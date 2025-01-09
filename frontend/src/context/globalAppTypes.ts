@@ -1,65 +1,109 @@
 import type { Map } from 'leaflet';
-import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
-import type { DroneData, FrequencyLayer, POI, TileInfo } from '../types/global';
+import type { RefObject, Dispatch, SetStateAction } from 'react';
+import type { GpsData, LocEstData, PingData, POI, TileInfo } from '../types/global';
 import type { MapSource } from '../utils/mapSources';
 
-export interface GlobalAppState {
-    // COMMS
-    interfaceType: 'serial' | 'simulated';
-    setInterfaceType: (val: 'serial' | 'simulated') => void;
+export enum GCSState {
+    RADIO_CONFIG_INPUT = 'RADIO_CONFIG_INPUT',
+    RADIO_CONFIG_WAITING = 'RADIO_CONFIG_WAITING',
+    RADIO_CONFIG_TIMEOUT = 'RADIO_CONFIG_TIMEOUT',
+    PING_FINDER_CONFIG_INPUT = 'PING_FINDER_CONFIG_INPUT',
+    PING_FINDER_CONFIG_WAITING = 'PING_FINDER_CONFIG_WAITING',
+    PING_FINDER_CONFIG_TIMEOUT = 'PING_FINDER_CONFIG_TIMEOUT',
+    START_INPUT = 'START_INPUT',
+    START_WAITING = 'START_WAITING',
+    START_TIMEOUT = 'START_TIMEOUT',
+    STOP_INPUT = 'STOP_INPUT',
+    STOP_WAITING = 'STOP_WAITING',
+    STOP_TIMEOUT = 'STOP_TIMEOUT'
+}
 
+export interface RadioConfigState {
+    interface_type: 'serial' | 'simulated';
     serialPorts: string[];
-    loadSerialPorts: () => void;
     selectedPort: string;
-    setSelectedPort: (val: string) => void;
-
-    baudRate: number | null;
-    setBaudRate: (val: number) => void;
+    baudRate: number;
     host: string;
-    setHost: (val: string) => void;
-    tcpPort: number | null;
-    setTcpPort: (val: number | null) => void;
+    tcpPort: number;
     ackTimeout: number;
-    setAckTimeout: (val: number) => void;
     maxRetries: number;
-    setMaxRetries: (val: number) => void;
+}
 
-    isConnecting: boolean;
-    isConnected: boolean;
-    setIsConnected: (val: boolean) => void;
-    connectionStatus: string;
-    errorMessage: string;
-    setErrorMessage: (val: string) => void;
-    waitingForSync: boolean;
-    setWaitingForSync: (val: boolean) => void;
-    showCancelSync: boolean;
-    setShowCancelSync: (val: boolean) => void;
-    droneData: DroneData | null;
+export interface PingFinderConfigState {
+    gain: number;
+    samplingRate: number;
+    centerFrequency: number;
+    enableTestData: boolean;
+    pingWidthMs: number;
+    pingMinSnr: number;
+    pingMaxLenMult: number;
+    pingMinLenMult: number;
+    targetFrequencies: number[];
+}
 
-    initializeComms: () => Promise<boolean>;
-    cancelConnection: () => void;
+export interface FrequencyLayer {
+    frequency: number;
+    pings: PingData[];
+    location_estimate: LocEstData | null;
+    visible_pings: boolean;
+    visible_location_estimate: boolean;
+}
 
-    // MAP
-    currentSource: MapSource;
-    setCurrentSource: (src: MapSource) => void;
+export interface GlobalAppState {
+    // State machine
+    gcsState: GCSState;
+
+    // Map Data
+    isMapOffline: boolean;
+    setIsMapOfflineUser: (val: boolean) => void;
+    currentMapSource: MapSource;
+    setCurrentMapSource: (src: MapSource) => void;
     mapSources: MapSource[];
-
-    isOffline: boolean;
-    setIsOffline: (val: boolean) => void;
-
     tileInfo: TileInfo | null;
     pois: POI[];
-    loadPOIs: () => void;
-    addPOI: (name: string, coords?: [number, number]) => Promise<boolean>;
-    removePOI: (name: string) => Promise<boolean>;
-
     frequencyLayers: FrequencyLayer[];
     setFrequencyLayers: Dispatch<SetStateAction<FrequencyLayer[]>>;
-
+    mapRef: RefObject<Map | null>;
+    loadPOIs: () => Promise<void>;
+    addPOI: (name: string, coords: [number, number]) => Promise<boolean>;
+    removePOI: (name: string) => Promise<boolean>;
     clearTileCache: () => Promise<boolean>;
-    clearAllData: () => Promise<boolean>;
 
-    isFetchingTiles: boolean;
+    // Connection state
+    connectionStatus: 1 | 0;
+    connectionQuality: 5 | 4 | 3 | 2 | 1 | 0;
+    pingTime: number;
+    gpsFrequency: number;
+    errorMessage: string;
+    errorMessageVisible: boolean;
+    setErrorMessageVisible: (visible: boolean) => void;
+    fatalError: string;
 
-    mapRef: MutableRefObject<Map | null>;
+    // GPS data
+    gpsData: GpsData | null;
+    gpsDataUpdated: boolean;
+
+    // Radio configuration
+    radioConfig: RadioConfigState;
+    setRadioConfig: (config: RadioConfigState) => void;
+    loadSerialPorts: () => Promise<void>;
+    sendRadioConfig: () => Promise<boolean>;
+    cancelRadioConfig: () => void;
+
+    // Ping finder configuration
+    pingFinderConfig: PingFinderConfigState;
+    setPingFinderConfig: (config: PingFinderConfigState) => void;
+    sendPingFinderConfig: () => Promise<boolean>;
+    cancelPingFinderConfig: () => void;
+
+    // Start
+    start: () => Promise<boolean>;
+    cancelStart: () => void;
+
+    // Stop
+    stop: () => Promise<boolean>;
+    cancelStop: () => void;
+
+    // Disconnect
+    disconnect: () => Promise<boolean>;
 }
