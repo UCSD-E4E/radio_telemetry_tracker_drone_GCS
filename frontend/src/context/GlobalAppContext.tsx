@@ -76,13 +76,13 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     const [connectionQuality, setConnectionQuality] = useState<5 | 4 | 3 | 2 | 1 | 0>(0);
     const [pingTime, setPingTime] = useState<number>(0);
     const [gpsFrequency, setGpsFrequency] = useState<number>(0);
-    const [errorMessage, setErrorMessage] = useState<string>('');
-    const [errorMessageVisible, setErrorMessageVisible] = useState<boolean>(false);
+    const [messageType, setMessageType] = useState<'error' | 'success'>('error');
+    const [message, setMessage] = useState<string>('');
+    const [messageVisible, setMessageVisible] = useState<boolean>(false);
     const [fatalError, setFatalError] = useState<string>('');
 
     const [gpsData, setGpsData] = useState<GpsData | null>(null);
     const [gpsDataUpdated, setGpsDataUpdated] = useState<boolean>(false);
-
 
     const [radioConfig, setRadioConfig] = useState<RadioConfigState>({
         interface_type: 'serial',
@@ -107,8 +107,8 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const sendRadioConfig = useCallback(async () => {
         setGcsState(GCSState.RADIO_CONFIG_WAITING);
-        setErrorMessage('');
-        setErrorMessageVisible(false);
+        setMessage('');
+        setMessageVisible(false);
 
         const backend = await fetchBackend();
 
@@ -124,15 +124,17 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
         if (radioConfig.interface_type === 'serial') {
             if (!radioConfig.selectedPort) {
-                setErrorMessage('Please select a port');
-                setErrorMessageVisible(true);
+                setMessage('Please select a port');
+                setMessageVisible(true);
+                setMessageType('error');
                 setGcsState(GCSState.RADIO_CONFIG_INPUT);
                 return false;
             }
         } else {
             if (!radioConfig.host || !radioConfig.tcpPort) {
-                setErrorMessage('Please enter a host & TCP port');
-                setErrorMessageVisible(true);
+                setMessage('Please enter a host & TCP port');
+                setMessageVisible(true);
+                setMessageType('error');
                 setGcsState(GCSState.RADIO_CONFIG_INPUT);
                 return false;
             }
@@ -147,8 +149,9 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             return true;
         } catch (e) {
             console.error('Failed to sendRadioConfig', e);
-            setErrorMessage(String(e));
-            setErrorMessageVisible(true);
+            setMessage(String(e));
+            setMessageVisible(true);
+            setMessageType('error');
             setGcsState(GCSState.RADIO_CONFIG_INPUT);
             return false;
         }
@@ -162,8 +165,9 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             return true;
         } catch (e) {
             console.error('Failed to cancelRadioConfig', e);
-            setErrorMessage(String(e));
-            setErrorMessageVisible(true);
+            setMessage(String(e));
+            setMessageVisible(true);
+            setMessageType('error');
             setGcsState(GCSState.RADIO_CONFIG_INPUT);
             return false;
         }
@@ -183,8 +187,8 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const sendPingFinderConfig = useCallback(async () => {
         setGcsState(GCSState.PING_FINDER_CONFIG_WAITING);
-        setErrorMessage('');
-        setErrorMessageVisible(false);
+        setMessage('');
+        setMessageVisible(false);
 
         const backend = await fetchBackend();
 
@@ -202,8 +206,9 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         } as PingFinderConfig;
 
         if (pingFinderConfig.targetFrequencies.length === 0) {
-            setErrorMessage('Please input at least one target frequency');
-            setErrorMessageVisible(true);
+            setMessage('Please input at least one target frequency');
+            setMessageVisible(true);
+            setMessageType('error');
             setGcsState(GCSState.PING_FINDER_CONFIG_INPUT);
             return false;
         }
@@ -211,16 +216,18 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         try {
             const success = await backend.send_config_request(pingFinderConfigSend);
             if (!success) {
-                setErrorMessage('Failed to send ping finder config');
-                setErrorMessageVisible(true);
+                setMessage('Failed to send ping finder config');
+                setMessageVisible(true);
+                setMessageType('error');
                 setGcsState(GCSState.PING_FINDER_CONFIG_INPUT);
                 return false;
             }
             return true;
         } catch (e) {
             console.error('Failed to sendPingFinderConfig', e);
-            setErrorMessage(String(e));
-            setErrorMessageVisible(true);
+            setMessage(String(e));
+            setMessageVisible(true);
+            setMessageType('error');
             setGcsState(GCSState.PING_FINDER_CONFIG_INPUT);
             return false;
         }
@@ -240,23 +247,25 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const start = useCallback(async () => {
         setGcsState(GCSState.START_WAITING);
-        setErrorMessage('');
-        setErrorMessageVisible(false);
+        setMessage('');
+        setMessageVisible(false);
 
         const backend = await fetchBackend();
         try {
             const success = await backend.send_start_request();
             if (!success) {
-                setErrorMessage('Failed to start');
-                setErrorMessageVisible(true);
+                setMessage('Failed to start');
+                setMessageVisible(true);
+                setMessageType('error');
                 setGcsState(GCSState.START_INPUT);
                 return false;
             }
             return true;
         } catch (e) {
             console.error('Failed to start', e);
-            setErrorMessage(String(e));
-            setErrorMessageVisible(true);
+            setMessage(String(e));
+            setMessageVisible(true);
+            setMessageType('error');
             setGcsState(GCSState.START_INPUT);
             return false;
         }
@@ -264,23 +273,22 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const cancelStart = useCallback(async () => {
         setGcsState(GCSState.START_INPUT);
-        setErrorMessage('');
-        setErrorMessageVisible(false);
+        setMessage('');
+        setMessageVisible(false);
 
         const backend = await fetchBackend();
         try {
             const success = await backend.cancel_start_request();
             if (!success) {
                 setGcsState(GCSState.START_TIMEOUT);
-                setErrorMessage('Failed to cancel start');
-                setErrorMessageVisible(true);
                 return false;
             }
             return true;
         } catch (e) {
             console.error('Failed to cancelStart', e);
-            setErrorMessage(String(e));
-            setErrorMessageVisible(true);
+            setMessage(String(e));
+            setMessageVisible(true);
+            setMessageType('error');
             setGcsState(GCSState.START_TIMEOUT);
             return false;
         }
@@ -288,23 +296,25 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const stop = useCallback(async () => {
         setGcsState(GCSState.STOP_WAITING);
-        setErrorMessage('');
-        setErrorMessageVisible(false);
+        setMessage('');
+        setMessageVisible(false);
 
         const backend = await fetchBackend();
         try {
             const success = await backend.send_stop_request();
             if (!success) {
-                setErrorMessage('Failed to stop');
-                setErrorMessageVisible(true);
+                setMessage('Failed to stop');
+                setMessageVisible(true);
+                setMessageType('error');
                 setGcsState(GCSState.STOP_INPUT);
                 return false;
             }
             return true;
         } catch (e) {
             console.error('Failed to stop', e);
-            setErrorMessage(String(e));
-            setErrorMessageVisible(true);
+            setMessage(String(e));
+            setMessageVisible(true);
+            setMessageType('error');
             setGcsState(GCSState.STOP_INPUT);
             return false;
         }
@@ -312,23 +322,22 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const cancelStop = useCallback(async () => {
         setGcsState(GCSState.STOP_INPUT);
-        setErrorMessage('');
-        setErrorMessageVisible(false);
+        setMessage('');
+        setMessageVisible(false);
 
         const backend = await fetchBackend();
         try {
             const success = await backend.cancel_stop_request();
             if (!success) {
                 setGcsState(GCSState.STOP_TIMEOUT);
-                setErrorMessage('Failed to cancel stop');
-                setErrorMessageVisible(true);
                 return false;
             }
             return true;
         } catch (e) {
             console.error('Failed to cancelStop', e);
-            setErrorMessage(String(e));
-            setErrorMessageVisible(true);
+            setMessage(String(e));
+            setMessageVisible(true);
+            setMessageType('error');
             setGcsState(GCSState.STOP_TIMEOUT);
             return false;
         }
@@ -336,16 +345,18 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const disconnect = useCallback(async () => {
         setGcsState(GCSState.RADIO_CONFIG_INPUT);
-        setErrorMessage('');
-        setErrorMessageVisible(false);
+        setMessage('');
+        setMessageVisible(false);
 
         const backend = await fetchBackend();
         try {
             await backend.disconnect();
+            return true;
         } catch (e) {
             console.error('Failed to disconnect', e);
-            setErrorMessage(String(e));
-            setErrorMessageVisible(true);
+            setMessage(String(e));
+            setMessageVisible(true);
+            setMessageType('error');
             return false;
         }
     }, []);
@@ -353,9 +364,12 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     useEffect(() => {
         (async () => {
             const backend = await fetchBackend();
-            backend.connection_status.connect((status: string) => {
-                if (status === '')
-
+            backend.sync_success.connect(() => {
+                if (gcsState === GCSState.START_WAITING) {
+                    setGcsState(GCSState.START_INPUT);
+                }
+            });
+        })();
     }, []);
 
     const value: GlobalAppState = {
@@ -384,6 +398,9 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         fatalError,
         gpsData,
         gpsDataUpdated,
+        successMessage,
+        successMessageVisible,
+        setSuccessMessageVisible,
         radioConfig,
         setRadioConfig,
         loadSerialPorts,
@@ -405,8 +422,9 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             {children}
         </GlobalAppContext.Provider>
     );
-};
+}
 
+export default GlobalAppProvider;
 // COMMS state
 //     const [interfaceType, setInterfaceType] = useState<'serial' | 'simulated'>('serial');
 //     const [serialPorts, setSerialPorts] = useState<string[]>([]);
@@ -810,3 +828,4 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 // };
 
 // export default GlobalAppProvider;
+

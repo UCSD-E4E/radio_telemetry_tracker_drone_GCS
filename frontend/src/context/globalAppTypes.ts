@@ -74,9 +74,10 @@ export interface GlobalAppState {
     connectionQuality: 5 | 4 | 3 | 2 | 1 | 0;
     pingTime: number;
     gpsFrequency: number;
-    errorMessage: string;
-    errorMessageVisible: boolean;
-    setErrorMessageVisible: (visible: boolean) => void;
+    messageType: 'error' | 'success';
+    message: string;
+    messageVisible: boolean;
+    setMessageVisible: (visible: boolean) => void;
     fatalError: string;
 
     // GPS data
@@ -85,6 +86,7 @@ export interface GlobalAppState {
 
     // Radio configuration
     radioConfig: RadioConfigState;
+
     setRadioConfig: (config: RadioConfigState) => void;
     loadSerialPorts: () => Promise<void>;
     sendRadioConfig: () => Promise<boolean>;

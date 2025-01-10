@@ -35,7 +35,7 @@ from radio_telemetry_tracker_drone_gcs.data.models import (
 from radio_telemetry_tracker_drone_gcs.data.models import (
     PingData as InternalPingData,
 )
-from radio_telemetry_tracker_drone_gcs.data_manager.drone_data_manager import DroneDataManager
+from radio_telemetry_tracker_drone_gcs.data.drone_data_manager import DroneDataManager
 from radio_telemetry_tracker_drone_gcs.services.poi_service import POIService
 from radio_telemetry_tracker_drone_gcs.services.tile_service import TileService
 
