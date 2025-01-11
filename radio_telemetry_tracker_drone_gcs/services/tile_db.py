@@ -6,6 +6,8 @@ import logging
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+from queue import Empty, Full, Queue
+from threading import Lock
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,24 +15,51 @@ if TYPE_CHECKING:
 
 DB_PATH = Path(__file__).parent.parent.parent / "tiles.db"
 
+# Connection pool
+MAX_CONNECTIONS = 5
+_connection_pool: Queue[sqlite3.Connection] = Queue(maxsize=MAX_CONNECTIONS)
+_pool_lock = Lock()
+
+def _create_connection() -> sqlite3.Connection:
+    """Create a new optimized database connection."""
+    conn = sqlite3.connect(DB_PATH, timeout=20, check_same_thread=False)
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("PRAGMA cache_size=-2000")
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+def _get_connection() -> sqlite3.Connection:
+    """Get a connection from the pool or create a new one."""
+    try:
+        return _connection_pool.get_nowait()
+    except Empty:
+        return _create_connection()
+
+def _return_connection(conn: sqlite3.Connection) -> None:
+    """Return a connection to the pool or close it if pool is full."""
+    try:
+        _connection_pool.put_nowait(conn)
+    except Full:
+        conn.close()
 
 @contextmanager
 def get_db_connection() -> Generator[sqlite3.Connection, None, None]:
-    """Get a database connection with optimized settings."""
+    """Get a database connection from the pool."""
     conn = None
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=20)
-        # Optimize connection
-        conn.execute("PRAGMA synchronous=NORMAL")  # Faster than FULL, still safe
-        conn.execute("PRAGMA temp_store=MEMORY")
-        conn.execute("PRAGMA cache_size=-2000")  # Use 2MB of cache
+        conn = _get_connection()
+        # Set optimized connection settings
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-2000")
         yield conn
     except sqlite3.Error:
         logging.exception("Database error")
         raise
     finally:
         if conn:
-            conn.close()
+            _return_connection(conn)
 
 
 def get_tile_db(z: int, x: int, y: int, source: str) -> bytes | None:

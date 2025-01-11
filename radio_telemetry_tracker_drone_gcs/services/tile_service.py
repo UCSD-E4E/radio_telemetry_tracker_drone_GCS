@@ -1,4 +1,5 @@
 """tile_service.py: orchestrates fetching tiles from internet or DB, plus offline logic."""
+
 from __future__ import annotations
 
 import logging
@@ -14,17 +15,32 @@ from radio_telemetry_tracker_drone_gcs.services.tile_db import (
     store_tile_db,
 )
 
+SATELLITE_ATTRIBUTION = (
+    "© Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, "
+    "Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
+)
+
 # Hardcode map sources for now, or load from config
 MAP_SOURCES = {
     "osm": {
         "id": "osm",
+        "name": "OpenStreetMap",
         "url_template": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         "attribution": "© OpenStreetMap contributors",
+        "headers": {
+            "User-Agent": "RTT-Drone-GCS/1.0",
+            "Accept": "image/png",
+        },
     },
     "satellite": {
         "id": "satellite",
+        "name": "Satellite",
         "url_template": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        "attribution": "© Esri etc...",
+        "attribution": SATELLITE_ATTRIBUTION,
+        "headers": {
+            "User-Agent": "RTT-Drone-GCS/1.0",
+            "Accept": "image/png",
+        },
     },
 }
 
@@ -68,13 +84,14 @@ class TileService:
         if not ms:
             logging.error("Invalid source_id: %s", source_id)
             return None
+
         url = ms["url_template"].format(z=z, x=x, y=y)
         try:
             logging.info("Fetching tile from %s", url)
-            resp = requests.get(url, timeout=5)
+            resp = requests.get(url, headers=ms["headers"], timeout=3)
             if resp.status_code == HTTPStatus.OK:
                 return resp.content
             logging.warning("Tile fetch returned status %d", resp.status_code)
         except requests.RequestException:
-            logging.warning("Network error fetching tile for %d/%d/%d source=%s", z, x, y, source_id)
+            logging.info("Network error fetching tile - possibly offline.")
         return None

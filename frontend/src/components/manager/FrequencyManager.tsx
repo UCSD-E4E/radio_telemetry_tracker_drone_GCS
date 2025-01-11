@@ -1,5 +1,5 @@
 import React from 'react';
-import FrequencyLayersControl from './FrequencyLayersControl';
+import FrequencyLayersControl from './cards/FrequencyLayersControl';
 import Card from '../common/Card';
 
 const FrequencyManager: React.FC = () => {

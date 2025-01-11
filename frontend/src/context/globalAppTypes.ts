@@ -1,7 +1,10 @@
 import type { Map } from 'leaflet';
-import type { RefObject, Dispatch, SetStateAction } from 'react';
-import type { GpsData, LocEstData, PingData, POI, TileInfo } from '../types/global';
+import type { RefObject } from 'react';
+import type { GpsData, POI, TileInfo } from '../types/global';
 import type { MapSource } from '../utils/mapSources';
+import { FrequencyData } from '../utils/backend';
+import type { ConnectionQualityState } from '../hooks/useConnectionQuality';
+import type { GCSStateMachineState } from '../hooks/useGCSStateMachine';
 
 export enum GCSState {
     RADIO_CONFIG_INPUT = 'RADIO_CONFIG_INPUT',
@@ -41,18 +44,13 @@ export interface PingFinderConfigState {
     targetFrequencies: number[];
 }
 
-export interface FrequencyLayer {
+export interface FrequencyLayerVisibility {
     frequency: number;
-    pings: PingData[];
-    location_estimate: LocEstData | null;
     visible_pings: boolean;
     visible_location_estimate: boolean;
 }
 
-export interface GlobalAppState {
-    // State machine
-    gcsState: GCSState;
-
+export interface GlobalAppState extends ConnectionQualityState, GCSStateMachineState {
     // Map Data
     isMapOffline: boolean;
     setIsMapOfflineUser: (val: boolean) => void;
@@ -61,32 +59,24 @@ export interface GlobalAppState {
     mapSources: MapSource[];
     tileInfo: TileInfo | null;
     pois: POI[];
-    frequencyLayers: FrequencyLayer[];
-    setFrequencyLayers: Dispatch<SetStateAction<FrequencyLayer[]>>;
+    frequencyData: FrequencyData;
+    deleteFrequencyLayer: (frequency: number) => void;
+    deleteAllFrequencyLayers: () => void;
+    frequencyVisibility: FrequencyLayerVisibility[];
+    setFrequencyVisibility: (visibility: FrequencyLayerVisibility[]) => void;
     mapRef: RefObject<Map | null>;
     loadPOIs: () => Promise<void>;
     addPOI: (name: string, coords: [number, number]) => Promise<boolean>;
     removePOI: (name: string) => Promise<boolean>;
     clearTileCache: () => Promise<boolean>;
 
-    // Connection state
-    connectionStatus: 1 | 0;
-    connectionQuality: 5 | 4 | 3 | 2 | 1 | 0;
-    pingTime: number;
-    gpsFrequency: number;
-    messageType: 'error' | 'success';
-    message: string;
-    messageVisible: boolean;
-    setMessageVisible: (visible: boolean) => void;
-    fatalError: string;
-
     // GPS data
     gpsData: GpsData | null;
     gpsDataUpdated: boolean;
+    setGpsDataUpdated: (updated: boolean) => void;
 
     // Radio configuration
     radioConfig: RadioConfigState;
-
     setRadioConfig: (config: RadioConfigState) => void;
     loadSerialPorts: () => Promise<void>;
     sendRadioConfig: () => Promise<boolean>;
@@ -108,4 +98,17 @@ export interface GlobalAppState {
 
     // Disconnect
     disconnect: () => Promise<boolean>;
+
+    // GCS State Machine
+    gcsState: GCSState;
+    connectionStatus: 1 | 0;
+    message: string;
+    messageVisible: boolean;
+    messageType: 'error' | 'success';
+    setupStateHandlers: () => void;
+    setMessageVisible: (visible: boolean) => void;
+    setGcsState: (state: GCSState) => void;
+
+    // Fatal Error State
+    fatalError: boolean;
 }

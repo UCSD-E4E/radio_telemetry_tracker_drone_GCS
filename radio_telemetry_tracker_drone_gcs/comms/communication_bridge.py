@@ -26,6 +26,8 @@ from radio_telemetry_tracker_drone_comms_package import (
 )
 
 from radio_telemetry_tracker_drone_gcs.comms.drone_comms_service import DroneCommsService
+from radio_telemetry_tracker_drone_gcs.comms.state_machine import DroneState, DroneStateMachine, StateTransition
+from radio_telemetry_tracker_drone_gcs.data.drone_data_manager import DroneDataManager
 from radio_telemetry_tracker_drone_gcs.data.models import (
     GpsData as InternalGpsData,
 )
@@ -35,8 +37,7 @@ from radio_telemetry_tracker_drone_gcs.data.models import (
 from radio_telemetry_tracker_drone_gcs.data.models import (
     PingData as InternalPingData,
 )
-from radio_telemetry_tracker_drone_gcs.data.drone_data_manager import DroneDataManager
-from radio_telemetry_tracker_drone_gcs.services.poi_service import POIService
+from radio_telemetry_tracker_drone_gcs.services.poi_service import PoiService
 from radio_telemetry_tracker_drone_gcs.services.tile_service import TileService
 
 
@@ -68,7 +69,7 @@ class CommunicationBridge(QObject):
     disconnect_failure = pyqtSignal(str)
 
     # Fatal error
-    fatal_error = pyqtSignal(str)
+    fatal_error = pyqtSignal()
 
     # Tile & POI signals
     tile_info_updated = pyqtSignal(QVariant)
@@ -76,24 +77,48 @@ class CommunicationBridge(QObject):
 
     # GPS, Ping, LocEst
     gps_data_updated = pyqtSignal(QVariant)
-    ping_data_updated = pyqtSignal(QVariant)
-    loc_est_data_updated = pyqtSignal(QVariant)
+    frequency_data_updated = pyqtSignal(QVariant)
 
     def __init__(self) -> None:
         """Initialize the communication bridge with data manager and services."""
         super().__init__()
 
         self._drone_data_manager = DroneDataManager()
-        self._drone_data_maanger.gpa_data_updated.connect(self.gps_data_updated.emit)
-        self._drone_data_manager.ping_data_updated.connect(self.ping_data_updated.emit)
-        self._drone_data_manager.loc_est_data_updated.connect(self.loc_est_data_updated.emit)
+        self._drone_data_manager.gps_data_updated.connect(self.gps_data_updated.emit)
+        self._drone_data_manager.frequency_data_updated.connect(self.frequency_data_updated.emit)
 
         # Tile & POI
         self._tile_service = TileService()
-        self._poi_service = POIService()
+        self._poi_service = PoiService()
+
+        # State machine
+        self._state_machine = DroneStateMachine()
+        self._state_machine.state_error.connect(self.fatal_error.emit)
+        self._setup_state_handlers()
 
         # Comms
         self._comms_service: DroneCommsService | None = None
+        self._response_received: bool = False
+        self._expected_packet_id: int | None = None
+
+    def _setup_state_handlers(self) -> None:
+        """Set up state machine handlers."""
+        self._state_machine.register_transition_handler(
+            DroneState.CONNECTING,
+            lambda: self._comms_service.register_sync_response_handler(self._on_sync_response, once=True),
+        )
+        self._state_machine.register_transition_handler(
+            DroneState.CONFIGURING,
+            lambda: self._comms_service.register_config_response_handler(self._on_config_response, once=True),
+        )
+        self._state_machine.register_transition_handler(
+            DroneState.READY,
+            lambda: self._comms_service.register_start_response_handler(self._on_start_response, once=True),
+        )
+        self._state_machine.register_transition_handler(
+            DroneState.RUNNING,
+            lambda: self._comms_service.register_stop_response_handler(self._on_stop_response, once=True),
+        )
 
     # --------------------------------------------------------------------------
     # Basic slots for comms
@@ -126,10 +151,10 @@ class CommunicationBridge(QObject):
                 tcp_port=int(config["tcp_port"]),
                 server_mode=False,
             )
-            ack_s = float(config["ack_s"])
+            ack_s = float(config["ack_timeout"])
             max_r = int(config["max_retries"])
 
-            self._comm_service = DroneCommsService(
+            self._comms_service = DroneCommsService(
                 radio_config=radio_cfg,
                 ack_timeout=ack_s,
                 max_retries=max_r,
@@ -140,10 +165,22 @@ class CommunicationBridge(QObject):
 
             # Register packet handlers
             self._comms_service.register_error_handler(self._handle_error_packet)
-            self._comms_service.register_sync_response_handler(self._on_sync_response, once=True)
+
+            # Transition to connecting state
+            self._state_machine.transition_to(
+                DroneState.CONNECTING,
+                StateTransition(
+                    from_state=DroneState.DISCONNECTED,
+                    to_state=DroneState.CONNECTING,
+                    success_message="Drone connected successfully",
+                    failure_message="Failed to connect to drone",
+                ),
+            )
 
             # Send sync
-            self._comms_service.send_sync_packet()
+            packet_id = self._comms_service.send_sync_request()
+            self._expected_packet_id = packet_id
+            self._response_received = False
 
             tt = ack_s * max_r
             QTimer.singleShot(int(tt * 1000), self._sync_timeout_check)
@@ -160,6 +197,7 @@ class CommunicationBridge(QObject):
         if self._comms_service:
             self._comms_service.stop()
             self._comms_service = None
+            self._state_machine.transition_to(DroneState.DISCONNECTED)
 
     @pyqtSlot()
     def disconnect(self) -> None:
@@ -169,7 +207,9 @@ class CommunicationBridge(QObject):
             return
         try:
             self._comms_service.register_stop_response_handler(self._on_disconnect_response, once=True)
-            self._comms_service.send_stop_request()
+            packet_id = self._comms_service.send_stop_request()
+            self._expected_packet_id = packet_id
+            self._response_received = False
 
             tt = self._comms_service.ack_timeout * self._comms_service.max_retries
             QTimer.singleShot(int(tt * 1000), self._disconnect_timeout_check)
@@ -202,7 +242,9 @@ class CommunicationBridge(QObject):
                 target_frequencies=list(map(int, cfg["target_frequencies"])),
             )
             self._comms_service.register_config_response_handler(self._on_config_response, once=True)
-            self._comms_service.send_config_request(req)
+            packet_id = self._comms_service.send_config_request(req)
+            self._expected_packet_id = packet_id
+            self._response_received = False
 
             tt = self._comms_service.ack_timeout * self._comms_service.max_retries
             QTimer.singleShot(int(tt * 1000), self._config_timeout_check)
@@ -234,7 +276,9 @@ class CommunicationBridge(QObject):
 
         try:
             self._comms_service.register_start_response_handler(self._on_start_response, once=True)
-            self._comms_service.send_start_request()
+            packet_id = self._comms_service.send_start_request()
+            self._expected_packet_id = packet_id
+            self._response_received = False
 
             tt = self._comms_service.ack_timeout * self._comms_service.max_retries
             QTimer.singleShot(int(tt * 1000), self._start_timeout_check)
@@ -266,7 +310,9 @@ class CommunicationBridge(QObject):
 
         try:
             self._comms_service.register_stop_response_handler(self._on_stop_response, once=True)
-            self._comms_service.send_stop_request()
+            packet_id = self._comms_service.send_stop_request()
+            self._expected_packet_id = packet_id
+            self._response_received = False
 
             tt = self._comms_service.ack_timeout * self._comms_service.max_retries
             QTimer.singleShot(int(tt * 1000), self._stop_timeout_check)
@@ -299,7 +345,7 @@ class CommunicationBridge(QObject):
             timestamp=gps.timestamp,
             packet_id=gps.packet_id,
         )
-        self._drone_data_manager.update_gps_data(internal_gps)
+        self._drone_data_manager.update_gps(internal_gps)
 
     def _handle_ping_data(self, ping: PingData) -> None:
         lat, lng = self._transform_coords(ping.easting, ping.northing, ping.epsg_code)
@@ -311,7 +357,7 @@ class CommunicationBridge(QObject):
             timestamp=ping.timestamp,
             packet_id=ping.packet_id,
         )
-        self._drone_data_manager.update_ping_data(internal_ping)
+        self._drone_data_manager.add_ping(internal_ping)
 
     def _handle_loc_est_data(self, loc_est: LocEstData) -> None:
         lat, lng = self._transform_coords(loc_est.easting, loc_est.northing, loc_est.epsg_code)
@@ -322,17 +368,14 @@ class CommunicationBridge(QObject):
             timestamp=loc_est.timestamp,
             packet_id=loc_est.packet_id,
         )
-        self._drone_data_manager.update_loc_est_data(internal_loc_est)
+        self._drone_data_manager.update_loc_est(internal_loc_est)
 
     # --------------------------------------------------------------------------
     # Error
     # --------------------------------------------------------------------------
     def _handle_error_packet(self, _: ErrorData) -> None:
         logging.error("Received fatal error packet")
-        self.fatal_error.emit(
-            "A fatal error occurred on the field device software. "
-            "Please reboot or turn off the field device and check it's logs for more information.",
-        )
+        self.fatal_error.emit()
 
     # --------------------------------------------------------------------------
     # Tile & POI bridging
@@ -461,70 +504,101 @@ class CommunicationBridge(QObject):
     # TIMEOUTS
     # --------------------------------------------------------------------------
     def _sync_timeout_check(self) -> None:
-        if not self._ack_received and self._expected_packet_id:
-            logging.warning("Sync ack not received => sync_timeout.")
+        if not self._response_received and self._expected_packet_id:
+            logging.warning("Sync response not received => sync_timeout.")
             self.sync_timeout.emit()
 
     def _config_timeout_check(self) -> None:
-        if not self._ack_received and self._expected_packet_id:
-            logging.warning("Config ack not received => config_timeout.")
+        if not self._response_received and self._expected_packet_id:
+            logging.warning("Config response not received => config_timeout.")
             self.config_timeout.emit()
 
     def _start_timeout_check(self) -> None:
-        if not self._ack_received and self._expected_packet_id:
-            logging.warning("Start ack not received => start_timeout.")
+        if not self._response_received and self._expected_packet_id:
+            logging.warning("Start response not received => start_timeout.")
             self.start_timeout.emit()
 
     def _stop_timeout_check(self) -> None:
-        if not self._ack_received and self._expected_packet_id:
-            logging.warning("Stop ack not received => stop_timeout.")
+        if not self._response_received and self._expected_packet_id:
+            logging.warning("Stop response not received => stop_timeout.")
             self.stop_timeout.emit()
 
     def _disconnect_timeout_check(self) -> None:
-        if not self._ack_received and self._expected_packet_id:
-            logging.warning("Stop ack not received => forcibly cleanup => disconnect_timeout.")
-            self.disconnect_failure.emit("Stop ack not received => forcibly cleanup => disconnect_timeout.")
+        if not self._response_received and self._expected_packet_id:
+            logging.warning("Stop response not received => forcibly cleanup => disconnect_timeout.")
+            self.disconnect_failure.emit("Stop response not received => forcibly cleanup => disconnect_timeout.")
             self._cleanup()
 
     # --------------------------------------------------------------------------
     # RESPONSES
     # --------------------------------------------------------------------------
     def _on_sync_response(self, rsp: SyncResponseData) -> None:
+        self._response_received = True
+        self._expected_packet_id = None
+
         if not rsp.success:
             logging.warning("Sync success=False => device not ready.")
-            self.sync_success.emit("Warning: device not ready or initialization failed.")
+            self.sync_failure.emit("Warning: device not ready or initialization failed.")
+            self._state_machine.transition_to(DroneState.ERROR)
+            return
+
         self._comms_service.register_gps_handler(self._handle_gps_data, once=False)
         self.sync_success.emit("Drone connected successfully")
+        self._state_machine.transition_to(DroneState.CONFIGURING)
 
     def _on_config_response(self, rsp: ConfigResponseData) -> None:
+        self._response_received = True
+        self._expected_packet_id = None
+
         if not rsp.success:
-            # Currently ConfigResponseData always returns success=True on the drone side
             logging.warning("Config success=False => Undefined behavior")
             self.config_failure.emit("UNDEFINED BEHAVIOR: Config failed.")
+            self._state_machine.transition_to(DroneState.ERROR)
+            return
+
         self.config_success.emit("Config sent to drone.")
+        self._state_machine.transition_to(DroneState.READY)
 
     def _on_start_response(self, rsp: StartResponseData) -> None:
+        self._response_received = True
+        self._expected_packet_id = None
+
         if not rsp.success:
             logging.warning("Start success=False => Improper state.")
             self.start_failure.emit("UNDEFINED BEHAVIOR: Improper state.")
-        else:
-            self.start_success.emit("Drone is now starting.")
-            self._comms_service.register_ping_handler(self._handle_ping_data, once=False)
-            self._comms_service.register_loc_est_handler(self._handle_loc_est_data, once=False)
+            self._state_machine.transition_to(DroneState.ERROR)
+            return
+
+        self.start_success.emit("Drone is now starting.")
+        self._comms_service.register_ping_handler(self._handle_ping_data, once=False)
+        self._comms_service.register_loc_est_handler(self._handle_loc_est_data, once=False)
+        self._state_machine.transition_to(DroneState.RUNNING)
 
     def _on_stop_response(self, rsp: StopResponseData) -> None:
+        self._response_received = True
+        self._expected_packet_id = None
+
         if not rsp.success:
             logging.warning("Stop success=False => Improper state.")
             self.stop_failure.emit("UNDEFINED BEHAVIOR: Improper state.")
-        else:
-            self.stop_success.emit("Drone is now stopping.")
-            self._comms_service.unregister_ping_handler(self._handle_ping_data)
-            self._comms_service.unregister_loc_est_handler(self._handle_loc_est_data)
+            self._state_machine.transition_to(DroneState.ERROR)
+            return
+
+        self.stop_success.emit("Drone is now stopping.")
+        self._comms_service.unregister_ping_handler(self._handle_ping_data)
+        self._comms_service.unregister_loc_est_handler(self._handle_loc_est_data)
+        self._state_machine.transition_to(DroneState.READY)
 
     def _on_disconnect_response(self, rsp: StopResponseData) -> None:
+        self._response_received = True
+        self._expected_packet_id = None
+
         if not rsp.success:
             logging.warning("Disconnect success=False => Improper state.")
             self.disconnect_failure.emit("UNDEFINED BEHAVIOR: Improper state.")
+            self._state_machine.transition_to(DroneState.ERROR)
+            return
+
         self.disconnect_success.emit("Drone is now disconnected.")
         self._cleanup()
 
@@ -544,7 +618,8 @@ class CommunicationBridge(QObject):
         if self._comms_service:
             self._comms_service.stop()
             self._comms_service = None
-        self.connection_status.emit("Disconnected")
+        self._state_machine.transition_to(DroneState.DISCONNECTED)
+        self.disconnect_success.emit("Disconnected")
 
     def _transform_coords(self, easting: float, northing: float, epsg_code: int) -> tuple[float, float]:
         epsg_str = str(epsg_code)
@@ -556,3 +631,9 @@ class CommunicationBridge(QObject):
         transformer = pyproj.Transformer.from_proj(utm_proj, wgs84_proj, always_xy=True)
         lng, lat = transformer.transform(easting, northing)
         return (lat, lng)
+
+    # Add logging method to match TypeScript interface
+    @pyqtSlot(str)
+    def log_message(self, message: str) -> None:
+        """Log a message from the frontend."""
+        logging.info("Frontend log: %s", message)

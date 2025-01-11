@@ -1,6 +1,15 @@
 import React, { useContext, useState } from 'react';
 import { GlobalAppContext } from '../../context/globalAppContextDef';
 import type { POI } from '../../types/global';
+import { logToPython } from '../../utils/logging';
+import { 
+    MapPinIcon, 
+    PencilIcon, 
+    TrashIcon, 
+    CheckIcon, 
+    XMarkIcon,
+    ArrowTopRightOnSquareIcon
+} from '@heroicons/react/24/outline';
 
 interface POIItemProps {
     poi: POI;
@@ -12,6 +21,7 @@ interface POIItemProps {
 const POIItem: React.FC<POIItemProps> = ({ poi, onRemove, onGoto, onRename }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [newName, setNewName] = useState(poi.name);
+    const [isHovered, setIsHovered] = useState(false);
 
     const handleRename = () => {
         if (newName.trim() && newName !== poi.name) {
@@ -20,49 +30,88 @@ const POIItem: React.FC<POIItemProps> = ({ poi, onRemove, onGoto, onRename }) =>
         setIsEditing(false);
     };
 
+    const handleCancel = () => {
+        setNewName(poi.name);
+        setIsEditing(false);
+    };
+
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             handleRename();
         } else if (e.key === 'Escape') {
-            setNewName(poi.name);
-            setIsEditing(false);
+            handleCancel();
         }
     };
 
     return (
-        <div className="flex items-center justify-between p-2 rounded hover:bg-white/80 transition-colors group">
-            {isEditing ? (
-                <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    onBlur={handleRename}
-                    onKeyDown={handleKeyDown}
-                    className="input"
-                    autoFocus
-                />
-            ) : (
-                <div className="flex gap-2 items-center flex-1">
-                    <button
-                        onClick={() => onGoto(poi.coords)}
-                        className="text-sm text-gray-700 hover:text-blue-600"
-                    >
-                        {poi.name}
-                    </button>
-                    <button
-                        onClick={() => setIsEditing(true)}
-                        className="btn-outline text-xs opacity-0 group-hover:opacity-100"
-                    >
-                        Edit
-                    </button>
-                </div>
-            )}
-            <button
-                onClick={() => onRemove(poi.name)}
-                className="btn-danger text-xs opacity-0 group-hover:opacity-100 ml-2"
-            >
-                Remove
-            </button>
+        <div 
+            className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 transition-colors"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+        >
+            <MapPinIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            
+            <div className="flex-1 min-w-0">
+                {isEditing ? (
+                    <div className="flex items-center gap-1">
+                        <input
+                            type="text"
+                            value={newName}
+                            onChange={(e) => setNewName(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            className="flex-1 px-2 py-1 text-sm border border-gray-300 
+                                rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                        />
+                        <button
+                            onClick={handleRename}
+                            className="p-1 text-green-600 hover:text-green-700 
+                                rounded hover:bg-green-50"
+                            title="Save"
+                        >
+                            <CheckIcon className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={handleCancel}
+                            className="p-1 text-gray-400 hover:text-gray-500 
+                                rounded hover:bg-gray-100"
+                            title="Cancel"
+                        >
+                            <XMarkIcon className="w-4 h-4" />
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-900 truncate">{poi.name}</span>
+                        <div className={`flex items-center gap-1 transition-opacity duration-200 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                            <button
+                                onClick={() => onGoto(poi.coords)}
+                                className="p-1 text-blue-600 hover:text-blue-700 
+                                    rounded hover:bg-blue-50"
+                                title="Go to location"
+                            >
+                                <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => setIsEditing(true)}
+                                className="p-1 text-gray-400 hover:text-gray-500 
+                                    rounded hover:bg-gray-100"
+                                title="Rename"
+                            >
+                                <PencilIcon className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => onRemove(poi.name)}
+                                className="p-1 text-red-500 hover:text-red-600 
+                                    rounded hover:bg-red-50"
+                                title="Remove"
+                            >
+                                <TrashIcon className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
@@ -88,20 +137,21 @@ const POIList: React.FC = () => {
 
     const handleRenamePOI = async (oldName: string, newName: string) => {
         if (window.backend) {
-            const success = await window.backend.rename_poi(oldName, newName);
-            if (success) {
-                loadPOIs();
+            try {
+                const success = await window.backend.rename_poi(oldName, newName);
+                if (success) {
+                    loadPOIs();
+                }
+            } catch (err) {
+                const errorMsg = `Error renaming POI from ${oldName} to ${newName}: ${err}`;
+                console.error(errorMsg);
+                logToPython(errorMsg);
             }
         }
     };
 
     return (
-        <div className="space-y-2">
-            <div className="flex items-center justify-between">
-                <label className="block text-sm font-medium text-gray-700">
-                    Points of Interest
-                </label>
-            </div>
+        <div className="mt-4">
             <div className="space-y-1">
                 {pois.map((poi) => (
                     <POIItem
@@ -113,7 +163,11 @@ const POIList: React.FC = () => {
                     />
                 ))}
                 {pois.length === 0 && (
-                    <div className="text-sm text-gray-400">No POIs found.</div>
+                    <div className="flex items-center gap-2 p-3 text-sm text-gray-500 
+                        bg-gray-50 rounded-lg border border-gray-100">
+                        <MapPinIcon className="w-5 h-5" />
+                        <span>No locations added yet</span>
+                    </div>
                 )}
             </div>
         </div>
