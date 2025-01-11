@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { GpsData } from '../types/global';
 
 const WINDOW_SIZE = 10;
@@ -13,8 +13,8 @@ export function useConnectionQuality(gpsData: GpsData | null, isConnected: boole
     const [connectionQuality, setConnectionQuality] = useState<5 | 4 | 3 | 2 | 1 | 0>(0);
     const [pingTime, setPingTime] = useState<number>(0);
     const [gpsFrequency, setGpsFrequency] = useState<number>(0);
-    const [pingTimeWindow, setPingTimeWindow] = useState<number[]>([]);
-    const [freqWindow, setFreqWindow] = useState<number[]>([]);
+    const lastPacketRef = useRef<{ timestamp: number, receivedAt: number } | null>(null);
+    const [packetIntervals, setPacketIntervals] = useState<number[]>([]);
 
     const calculateConnectionQuality = (avgPingTime: number, avgFreq: number): 5 | 4 | 3 | 2 | 1 => {
         const pingQuality = avgPingTime < 200 ? 5 :
@@ -38,51 +38,48 @@ export function useConnectionQuality(gpsData: GpsData | null, isConnected: boole
             setConnectionQuality(0);
             setPingTime(0);
             setGpsFrequency(0);
-            setPingTimeWindow([]);
-            setFreqWindow([]);
+            setPacketIntervals([]);
+            lastPacketRef.current = null;
         }
     }, [isConnected]);
 
     useEffect(() => {
         if (!gpsData || !isConnected) return;
 
-        const now = new Date().getTime();
-        const lastUpdate = new Date(gpsData.timestamp).getTime();
-        const timeDiff = now - lastUpdate;
+        const now = Date.now();
+        const packetTimestamp = Math.floor(gpsData.timestamp / 1000); // Convert from microseconds to milliseconds
+        
+        // Calculate ping time for this packet
+        const currentPing = now - packetTimestamp;
+        setPingTime(currentPing);
 
-        // Update ping time window
-        setPingTimeWindow(prev => {
-            const newWindow = [...prev, timeDiff];
-            if (newWindow.length > WINDOW_SIZE) {
-                newWindow.shift();
+        // Calculate packet interval and update frequency
+        if (lastPacketRef.current) {
+            const interval = packetTimestamp - lastPacketRef.current.timestamp;
+            
+            setPacketIntervals(prev => {
+                const newIntervals = [...prev, interval];
+                if (newIntervals.length > WINDOW_SIZE) {
+                    newIntervals.shift();
+                }
+                return newIntervals;
+            });
+
+            if (packetIntervals.length > 0) {
+                // Calculate average interval in seconds
+                const avgInterval = packetIntervals.reduce((a, b) => a + b, 0) / packetIntervals.length / 1000;
+                // Frequency is 1/interval
+                const freq = avgInterval > 0 ? 1 / avgInterval : 0;
+                setGpsFrequency(freq);
             }
-            return newWindow;
-        });
-
-        // Update frequency window
-        setFreqWindow(prev => {
-            const newWindow = [...prev, now];
-            if (newWindow.length > WINDOW_SIZE) {
-                newWindow.shift();
-            }
-            return newWindow;
-        });
-
-        // Calculate average ping time
-        const avgPingTime = Math.round(pingTimeWindow.reduce((a, b) => a + b, 0) / pingTimeWindow.length);
-        setPingTime(avgPingTime);
-
-        // Calculate GPS frequency
-        if (freqWindow.length >= 2) {
-            const timeSpan = freqWindow[freqWindow.length - 1] - freqWindow[0];
-            const freq = ((freqWindow.length - 1) / timeSpan) * 1000;
-            setGpsFrequency(freq);
         }
 
+        lastPacketRef.current = { timestamp: packetTimestamp, receivedAt: now };
+
         // Calculate connection quality
-        const quality = calculateConnectionQuality(avgPingTime, gpsFrequency);
+        const quality = calculateConnectionQuality(currentPing, gpsFrequency);
         setConnectionQuality(quality);
-    }, [gpsData, gpsFrequency, freqWindow, pingTimeWindow, isConnected]);
+    }, [gpsData, isConnected, gpsFrequency]);
 
     return { connectionQuality, pingTime, gpsFrequency };
 } 

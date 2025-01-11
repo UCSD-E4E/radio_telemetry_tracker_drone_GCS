@@ -98,8 +98,11 @@ class CommunicationBridge(QObject):
 
         # Comms
         self._comms_service: DroneCommsService | None = None
-        self._response_received: bool = False
-        self._expected_packet_id: int | None = None
+        self._sync_response_received: bool = False
+        self._config_response_received: bool = False
+        self._start_response_received: bool = False
+        self._stop_response_received: bool = False
+        self._disconnect_response_received: bool = False
 
     def _setup_state_handlers(self) -> None:
         """Set up state machine handlers."""
@@ -178,9 +181,8 @@ class CommunicationBridge(QObject):
             )
 
             # Send sync
-            packet_id = self._comms_service.send_sync_request()
-            self._expected_packet_id = packet_id
-            self._response_received = False
+            self._comms_service.send_sync_request()
+            self._sync_response_received = False
 
             tt = ack_s * max_r
             QTimer.singleShot(int(tt * 1000), self._sync_timeout_check)
@@ -207,9 +209,8 @@ class CommunicationBridge(QObject):
             return
         try:
             self._comms_service.register_stop_response_handler(self._on_disconnect_response, once=True)
-            packet_id = self._comms_service.send_stop_request()
-            self._expected_packet_id = packet_id
-            self._response_received = False
+            self._comms_service.send_stop_request()
+            self._disconnect_response_received = False
 
             tt = self._comms_service.ack_timeout * self._comms_service.max_retries
             QTimer.singleShot(int(tt * 1000), self._disconnect_timeout_check)
@@ -242,9 +243,8 @@ class CommunicationBridge(QObject):
                 target_frequencies=list(map(int, cfg["target_frequencies"])),
             )
             self._comms_service.register_config_response_handler(self._on_config_response, once=True)
-            packet_id = self._comms_service.send_config_request(req)
-            self._expected_packet_id = packet_id
-            self._response_received = False
+            self._comms_service.send_config_request(req)
+            self._config_response_received = False
 
             tt = self._comms_service.ack_timeout * self._comms_service.max_retries
             QTimer.singleShot(int(tt * 1000), self._config_timeout_check)
@@ -276,9 +276,8 @@ class CommunicationBridge(QObject):
 
         try:
             self._comms_service.register_start_response_handler(self._on_start_response, once=True)
-            packet_id = self._comms_service.send_start_request()
-            self._expected_packet_id = packet_id
-            self._response_received = False
+            self._comms_service.send_start_request()
+            self._start_response_received = False
 
             tt = self._comms_service.ack_timeout * self._comms_service.max_retries
             QTimer.singleShot(int(tt * 1000), self._start_timeout_check)
@@ -310,9 +309,8 @@ class CommunicationBridge(QObject):
 
         try:
             self._comms_service.register_stop_response_handler(self._on_stop_response, once=True)
-            packet_id = self._comms_service.send_stop_request()
-            self._expected_packet_id = packet_id
-            self._response_received = False
+            self._comms_service.send_stop_request()
+            self._stop_response_received = False
 
             tt = self._comms_service.ack_timeout * self._comms_service.max_retries
             QTimer.singleShot(int(tt * 1000), self._stop_timeout_check)
@@ -504,37 +502,41 @@ class CommunicationBridge(QObject):
     # TIMEOUTS
     # --------------------------------------------------------------------------
     def _sync_timeout_check(self) -> None:
-        if not self._response_received and self._expected_packet_id:
+        if not self._sync_response_received:
             logging.warning("Sync response not received => sync_timeout.")
             self.sync_timeout.emit()
+            self._sync_response_received = True
 
     def _config_timeout_check(self) -> None:
-        if not self._response_received and self._expected_packet_id:
+        if not self._config_response_received:
             logging.warning("Config response not received => config_timeout.")
             self.config_timeout.emit()
+            self._config_response_received = True
 
     def _start_timeout_check(self) -> None:
-        if not self._response_received and self._expected_packet_id:
+        if not self._start_response_received:
             logging.warning("Start response not received => start_timeout.")
             self.start_timeout.emit()
+            self._start_response_received = True
 
     def _stop_timeout_check(self) -> None:
-        if not self._response_received and self._expected_packet_id:
+        if not self._stop_response_received:
             logging.warning("Stop response not received => stop_timeout.")
             self.stop_timeout.emit()
+            self._stop_response_received = True
 
     def _disconnect_timeout_check(self) -> None:
-        if not self._response_received and self._expected_packet_id:
+        if not self._disconnect_response_received:
             logging.warning("Stop response not received => forcibly cleanup => disconnect_timeout.")
             self.disconnect_failure.emit("Stop response not received => forcibly cleanup => disconnect_timeout.")
             self._cleanup()
+            self._disconnect_response_received = True
 
     # --------------------------------------------------------------------------
     # RESPONSES
     # --------------------------------------------------------------------------
     def _on_sync_response(self, rsp: SyncResponseData) -> None:
-        self._response_received = True
-        self._expected_packet_id = None
+        self._sync_response_received = True
 
         if not rsp.success:
             logging.warning("Sync success=False => device not ready.")
@@ -547,8 +549,7 @@ class CommunicationBridge(QObject):
         self._state_machine.transition_to(DroneState.CONFIGURING)
 
     def _on_config_response(self, rsp: ConfigResponseData) -> None:
-        self._response_received = True
-        self._expected_packet_id = None
+        self._config_response_received = True
 
         if not rsp.success:
             logging.warning("Config success=False => Undefined behavior")
@@ -560,8 +561,7 @@ class CommunicationBridge(QObject):
         self._state_machine.transition_to(DroneState.READY)
 
     def _on_start_response(self, rsp: StartResponseData) -> None:
-        self._response_received = True
-        self._expected_packet_id = None
+        self._start_response_received = True
 
         if not rsp.success:
             logging.warning("Start success=False => Improper state.")
@@ -575,8 +575,7 @@ class CommunicationBridge(QObject):
         self._state_machine.transition_to(DroneState.RUNNING)
 
     def _on_stop_response(self, rsp: StopResponseData) -> None:
-        self._response_received = True
-        self._expected_packet_id = None
+        self._stop_response_received = True
 
         if not rsp.success:
             logging.warning("Stop success=False => Improper state.")
@@ -590,8 +589,7 @@ class CommunicationBridge(QObject):
         self._state_machine.transition_to(DroneState.READY)
 
     def _on_disconnect_response(self, rsp: StopResponseData) -> None:
-        self._response_received = True
-        self._expected_packet_id = None
+        self._disconnect_response_received = True
 
         if not rsp.success:
             logging.warning("Disconnect success=False => Improper state.")

@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useContext } from 'react';
 import { GlobalAppContext } from '../../../context/globalAppContextDef';
 import { GCSState } from '../../../context/globalAppTypes';
-import { PlusIcon, XMarkIcon, AdjustmentsHorizontalIcon, BeakerIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, XMarkIcon, AdjustmentsHorizontalIcon, BeakerIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import Card from '../../common/Card';
 
 const calculateCenterFrequency = (frequencies: number[], defaultFreq: number) => {
@@ -234,18 +234,35 @@ const PingFinderConfig: React.FC = () => {
                 {/* Action Buttons */}
                 <div className="pt-4 space-y-3">
                     {(isWaiting || isTimeout) ? (
-                        <div className="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-lg border border-blue-100">
-                            <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-600 border-t-transparent" />
-                            <span className="mt-2 text-sm font-medium text-blue-700">Configuring ping finder...</span>
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                                <div className="animate-spin h-5 w-5 text-blue-600">
+                                    <ArrowPathIcon />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="text-sm font-medium text-blue-700">
+                                        Configuring ping finder...
+                                    </div>
+                                    <div className="text-xs text-blue-600 mt-0.5">
+                                        This may take a few seconds
+                                    </div>
+                                </div>
+                            </div>
+
                             {isTimeout && (
-                                <button
-                                    onClick={cancelPingFinderConfig}
-                                    className="mt-3 px-4 py-2 text-sm font-medium text-red-600 bg-white 
-                                        rounded-lg border border-red-200 hover:bg-red-50 transition-colors
-                                        focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                                >
-                                    Cancel Configuration
-                                </button>
+                                <>
+                                    <button
+                                        onClick={cancelPingFinderConfig}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 
+                                            text-red-600 bg-white border-2 border-red-200 rounded-lg 
+                                            hover:bg-red-50 transition-colors"
+                                    >
+                                        <span className="font-medium">Cancel Request</span>
+                                    </button>
+                                    <p className="text-sm text-gray-600 text-center">
+                                        Request is taking longer than expected. You may cancel and try again.
+                                    </p>
+                                </>
                             )}
                         </div>
                     ) : (

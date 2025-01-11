@@ -2,14 +2,76 @@ import React, { useContext } from 'react';
 import { GlobalAppContext } from '../../../context/globalAppContextDef';
 import { MapPinIcon, SignalIcon, ClockIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 import Card from '../../common/Card';
+import { useConnectionQuality } from '../../../hooks/useConnectionQuality';
+
+enum ConnectionQuality {
+    DISCONNECTED = 0,
+    POOR = 1,
+    FAIR = 2,
+    GOOD = 3,
+    EXCELLENT = 4,
+    OPTIMAL = 5
+}
+
+const getConnectionQualityFromState = (quality: number): ConnectionQuality => {
+    switch (quality) {
+        case 5:
+            return ConnectionQuality.OPTIMAL;
+        case 4:
+            return ConnectionQuality.EXCELLENT;
+        case 3:
+            return ConnectionQuality.GOOD;
+        case 2:
+            return ConnectionQuality.FAIR;
+        case 1:
+            return ConnectionQuality.POOR;
+        case 0:
+            return ConnectionQuality.DISCONNECTED;
+        default:
+            return ConnectionQuality.DISCONNECTED;
+    }
+};
+
+const getConnectionQualityColor = (quality: ConnectionQuality) => {
+    switch (quality) {
+        case ConnectionQuality.OPTIMAL:
+        case ConnectionQuality.EXCELLENT:
+            return 'bg-green-500';
+        case ConnectionQuality.GOOD:
+            return 'bg-blue-500';
+        case ConnectionQuality.FAIR:
+            return 'bg-yellow-500';
+        case ConnectionQuality.POOR:
+            return 'bg-red-500';
+        default:
+            return 'bg-gray-300';
+    }
+};
+
+const ConnectionQualityIndicator: React.FC<{ quality: ConnectionQuality }> = ({ quality }) => {
+    const color = getConnectionQualityColor(quality);
+    return (
+        <div className="flex gap-1">
+            {[...Array(5)].map((_, i) => (
+                <div
+                    key={i}
+                    className={`h-1.5 w-4 rounded-full transition-colors ${
+                        i < quality ? color : 'bg-gray-200'
+                    }`}
+                />
+            ))}
+        </div>
+    );
+};
 
 const DroneStatus: React.FC = () => {
     const context = useContext(GlobalAppContext);
     if (!context) throw new Error('Must be inside GlobalAppProvider');
 
-    const { connectionStatus, gpsData, mapRef, connectionQuality, pingTime, gpsFrequency } = context;
-
+    const { connectionStatus, gpsData, mapRef } = context;
     const isConnected = connectionStatus === 1;
+    const { connectionQuality, pingTime, gpsFrequency } = useConnectionQuality(gpsData, isConnected);
+    const quality = getConnectionQualityFromState(connectionQuality);
 
     const handleGoToDrone = () => {
         if (gpsData && mapRef.current) {
@@ -29,45 +91,27 @@ const DroneStatus: React.FC = () => {
 
     const qualityText: Record<number, string> = {
         5: 'Optimal Range',
-        4: 'Good Range',
-        3: 'Moderate Range',
-        2: 'Weak Range',
-        1: 'Out of Range',
+        4: 'Excellent Range',
+        3: 'Good Range',
+        2: 'Fair Range',
+        1: 'Poor Range',
         0: 'Disconnected'
-    };
-
-    const qualityBars: Record<number, number> = {
-        5: 4,
-        4: 3,
-        3: 2,
-        2: 1,
-        1: 1,
-        0: 0
     };
 
     return (
         <Card title="Drone Status">
             <div className="space-y-4">
                 {/* Connection Status */}
-                <div className={`p-4 rounded-lg border ${qualityColors[connectionQuality].border} ${qualityColors[connectionQuality].bg}`}>
+                <div className={`p-4 rounded-lg border ${qualityColors[quality].border} ${qualityColors[quality].bg}`}>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <SignalIcon className={`h-5 w-5 ${qualityColors[connectionQuality].text}`} />
+                            <SignalIcon className={`h-5 w-5 ${qualityColors[quality].text}`} />
                             <div>
-                                <div className={`text-sm font-medium ${qualityColors[connectionQuality].text}`}>
-                                    {qualityText[connectionQuality]}
+                                <div className={`text-sm font-medium ${qualityColors[quality].text}`}>
+                                    {qualityText[quality]}
                                 </div>
                                 <div className="flex gap-1 mt-1">
-                                    {[...Array(4)].map((_, i) => (
-                                        <div
-                                            key={i}
-                                            className={`h-1.5 w-4 rounded-full transition-colors ${
-                                                i < qualityBars[connectionQuality]
-                                                    ? qualityColors[connectionQuality].text.replace('text', 'bg')
-                                                    : 'bg-gray-200'
-                                            }`}
-                                        />
-                                    ))}
+                                    <ConnectionQualityIndicator quality={quality} />
                                 </div>
                             </div>
                         </div>

@@ -235,13 +235,14 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setMessageVisible(false);
         if (!window.backend) return false;
         try {
+            setGcsState(GCSState.RADIO_CONFIG_INPUT);
             await window.backend.cancel_connection();
             return true;
         } catch (e) {
             console.error('Failed to cancelRadioConfig', e);
             return false;
         }
-    }, [setMessageVisible]);
+    }, [setMessageVisible, setGcsState]);
 
     const sendPingFinderConfig = useCallback(async () => {
         setMessageVisible(false);
@@ -275,12 +276,13 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setMessageVisible(false);
         if (!window.backend) return false;
         try {
+            setGcsState(GCSState.PING_FINDER_CONFIG_INPUT);
             return await window.backend.cancel_config_request();
         } catch (e) {
             console.error('Failed to cancelPingFinderConfig', e);
             return false;
         }
-    }, [setMessageVisible]);
+    }, [setMessageVisible, setGcsState]);
 
     const start = useCallback(async () => {
         setMessageVisible(false);
@@ -299,12 +301,13 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setMessageVisible(false);
         if (!window.backend) return false;
         try {
+            setGcsState(GCSState.START_INPUT);
             return await window.backend.cancel_start_request();
         } catch (e) {
             console.error('Failed to cancelStart', e);
             return false;
         }
-    }, [setMessageVisible]);
+    }, [setMessageVisible, setGcsState]);
 
     const stop = useCallback(async () => {
         setMessageVisible(false);
@@ -323,12 +326,13 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setMessageVisible(false);
         if (!window.backend) return false;
         try {
+            setGcsState(GCSState.STOP_INPUT);
             return await window.backend.cancel_stop_request();
         } catch (e) {
             console.error('Failed to cancelStop', e);
             return false;
         }
-    }, [setMessageVisible]);
+    }, [setMessageVisible, setGcsState]);
 
     const disconnect = useCallback(async () => {
         setMessageVisible(false);
