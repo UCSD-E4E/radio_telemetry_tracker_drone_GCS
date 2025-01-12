@@ -80,7 +80,11 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     const { connectionQuality, pingTime, gpsFrequency } = useConnectionQuality(gpsData, connectionStatus === 1);
 
+    // Fatal error
     const [fatalError, setFatalError] = useState<boolean>(false);
+
+    // Simulator state
+    const [isSimulatorRunning, setIsSimulatorRunning] = useState<boolean>(false);
 
     // Effect to setup state handlers when backend is available
     useEffect(() => {
@@ -95,11 +99,18 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
             backend.frequency_data_updated.connect((data: FrequencyData) => {
                 setFrequencyData(data);
-                setFrequencyVisibility(prev => [...prev, ...Object.entries(data).map(([freq]) => ({
-                    frequency: parseInt(freq),
-                    visible_pings: true,
-                    visible_location_estimate: true
-                }))]);
+                setFrequencyVisibility(prev => {
+                    const existingFreqs = new Set(prev.map(item => item.frequency));
+                    const newFreqs = Object.entries(data)
+                        .map(([freq]) => parseInt(freq))
+                        .filter(freq => !existingFreqs.has(freq))
+                        .map(freq => ({
+                            frequency: freq,
+                            visible_pings: true,
+                            visible_location_estimate: true
+                        }));
+                    return [...prev, ...newFreqs];
+                });
             });
 
             backend.tile_info_updated.connect((info: TileInfo) => {
@@ -112,6 +123,15 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
             backend.fatal_error.connect(() => {
                 setFatalError(true);
+            });
+
+            // Simulator signals
+            backend.simulator_started.connect(() => {
+                setIsSimulatorRunning(true);
+            });
+
+            backend.simulator_stopped.connect(() => {
+                setIsSimulatorRunning(false);
             });
 
         })();
@@ -346,7 +366,33 @@ const GlobalAppProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         }
     }, [setMessageVisible]);
 
+    // Simulator functions
+    const initSimulator = useCallback(async (config: RadioConfig) => {
+        if (!window.backend) return false;
+        try {
+            return await window.backend.init_simulator(config);
+        } catch (e) {
+            console.error('Failed to initialize simulator', e);
+            return false;
+        }
+    }, []);
+
+    const cleanupSimulator = useCallback(async () => {
+        if (!window.backend) return false;
+        try {
+            return await window.backend.cleanup_simulator();
+        } catch (e) {
+            console.error('Failed to cleanup simulator', e);
+            return false;
+        }
+    }, []);
+
     const value: GlobalAppState = {
+        // Simulator
+        initSimulator,
+        cleanupSimulator,
+        isSimulatorRunning,
+
         // Connection Quality State
         connectionQuality,
         pingTime,

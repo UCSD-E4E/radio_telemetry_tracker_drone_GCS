@@ -1,4 +1,6 @@
 import React, { useContext } from 'react';
+import { useSimulatorShortcut } from '../../hooks/useSimulatorShortcut';
+import SimulatorPopup from './cards/SimulatorPopup';
 import DroneStatus from './cards/DroneStatus';
 import Message from './cards/Message';
 import RadioConfig from './cards/RadioConfig';
@@ -11,6 +13,8 @@ import { GCSState } from '../../context/globalAppTypes';
 
 const DeviceControls: React.FC = () => {
     const context = useContext(GlobalAppContext);
+    const { isSimulatorOpen, setIsSimulatorOpen } = useSimulatorShortcut();
+    
     if (!context) return null;
     const { gcsState, message, messageType, messageVisible } = context;
 
@@ -53,6 +57,12 @@ const DeviceControls: React.FC = () => {
             {showStart && <Start />}
             {showStop && <Stop />}
             {!hideDisconnect && <Disconnect />}
+
+            {/* Hidden Simulator Popup (Ctrl/Cmd + Alt + S to toggle) */}
+            <SimulatorPopup 
+                isOpen={isSimulatorOpen}
+                onClose={() => setIsSimulatorOpen(false)}
+            />
         </div>
     );
 };

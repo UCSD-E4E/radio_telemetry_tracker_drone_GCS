@@ -1,6 +1,6 @@
 import type { Map } from 'leaflet';
 import type { RefObject } from 'react';
-import type { GpsData, POI, TileInfo } from '../types/global';
+import type { GpsData, POI, TileInfo, RadioConfig } from '../types/global';
 import type { MapSource } from '../utils/mapSources';
 import { FrequencyData } from '../utils/backend';
 import type { ConnectionQualityState } from '../hooks/useConnectionQuality';
@@ -51,6 +51,11 @@ export interface FrequencyLayerVisibility {
 }
 
 export interface GlobalAppState extends ConnectionQualityState, GCSStateMachineState {
+    // Simulator
+    initSimulator: (config: RadioConfig) => Promise<boolean>;
+    cleanupSimulator: () => Promise<boolean>;
+    isSimulatorRunning: boolean;
+
     // Map Data
     isMapOffline: boolean;
     setIsMapOfflineUser: (val: boolean) => void;

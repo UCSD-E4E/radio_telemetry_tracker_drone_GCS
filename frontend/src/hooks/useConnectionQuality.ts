@@ -79,7 +79,7 @@ export function useConnectionQuality(gpsData: GpsData | null, isConnected: boole
         // Calculate connection quality
         const quality = calculateConnectionQuality(currentPing, gpsFrequency);
         setConnectionQuality(quality);
-    }, [gpsData, isConnected, gpsFrequency]);
+    }, [gpsData, isConnected, gpsFrequency, packetIntervals]);
 
     return { connectionQuality, pingTime, gpsFrequency };
 } 

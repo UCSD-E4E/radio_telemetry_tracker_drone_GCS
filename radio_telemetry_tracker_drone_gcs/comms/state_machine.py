@@ -13,11 +13,27 @@ from PyQt6.QtCore import QObject, pyqtSignal
 class DroneState(Enum):
     """Enum representing possible drone states."""
 
-    DISCONNECTED = auto()
-    CONNECTING = auto()
-    CONFIGURING = auto()
-    READY = auto()
-    RUNNING = auto()
+    # Radio config states
+    RADIO_CONFIG_INPUT = auto()
+    RADIO_CONFIG_WAITING = auto()
+    RADIO_CONFIG_TIMEOUT = auto()
+
+    # Ping finder config states
+    PING_FINDER_CONFIG_INPUT = auto()
+    PING_FINDER_CONFIG_WAITING = auto()
+    PING_FINDER_CONFIG_TIMEOUT = auto()
+
+    # Start states
+    START_INPUT = auto()
+    START_WAITING = auto()
+    START_TIMEOUT = auto()
+
+    # Stop states
+    STOP_INPUT = auto()
+    STOP_WAITING = auto()
+    STOP_TIMEOUT = auto()
+
+    # Error state
     ERROR = auto()
 
 
@@ -41,9 +57,10 @@ class DroneStateMachine(QObject):
     def __init__(self) -> None:
         """Initialize the state machine."""
         super().__init__()
-        self._current_state = DroneState.DISCONNECTED
+        self._current_state = DroneState.RADIO_CONFIG_INPUT
         self._transition_handlers: dict[DroneState, Callable[[], None]] = {}
         self._error_handlers: dict[DroneState, Callable[[str], None]] = {}
+        self._timeout_handlers: dict[DroneState, Callable[[], None]] = {}
 
     @property
     def current_state(self) -> DroneState:
@@ -71,6 +88,35 @@ class DroneStateMachine(QObject):
             handler: The handler function to call
         """
         self._error_handlers[state] = handler
+
+    def register_timeout_handler(self, state: DroneState, handler: Callable[[], None]) -> None:
+        """Register a handler for state timeouts.
+
+        Args:
+            state: The state to handle timeouts for
+            handler: The handler function to call
+        """
+        self._timeout_handlers[state] = handler
+
+    def handle_timeout(self) -> None:
+        """Handle timeout in the current state."""
+        current_state = self._current_state
+
+        # Map waiting states to timeout states
+        timeout_map = {
+            DroneState.RADIO_CONFIG_WAITING: DroneState.RADIO_CONFIG_TIMEOUT,
+            DroneState.PING_FINDER_CONFIG_WAITING: DroneState.PING_FINDER_CONFIG_TIMEOUT,
+            DroneState.START_WAITING: DroneState.START_TIMEOUT,
+            DroneState.STOP_WAITING: DroneState.STOP_TIMEOUT,
+        }
+
+        if current_state in timeout_map:
+            self.transition_to(timeout_map[current_state])
+            if current_state in self._timeout_handlers:
+                try:
+                    self._timeout_handlers[current_state]()
+                except Exception:
+                    logging.exception("Error in timeout handler")
 
     def transition_to(self, new_state: DroneState, transition: StateTransition | None = None) -> None:
         """Transition to a new state.

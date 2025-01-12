@@ -12,6 +12,7 @@ from typing import Any
 
 import pyproj
 from PyQt6.QtCore import QObject, QTimer, QVariant, pyqtSignal, pyqtSlot
+
 from radio_telemetry_tracker_drone_comms_package import (
     ConfigRequestData,
     ConfigResponseData,
@@ -24,7 +25,6 @@ from radio_telemetry_tracker_drone_comms_package import (
     StopResponseData,
     SyncResponseData,
 )
-
 from radio_telemetry_tracker_drone_gcs.comms.drone_comms_service import DroneCommsService
 from radio_telemetry_tracker_drone_gcs.comms.state_machine import DroneState, DroneStateMachine, StateTransition
 from radio_telemetry_tracker_drone_gcs.data.drone_data_manager import DroneDataManager
@@ -38,7 +38,10 @@ from radio_telemetry_tracker_drone_gcs.data.models import (
     PingData as InternalPingData,
 )
 from radio_telemetry_tracker_drone_gcs.services.poi_service import PoiService
+from radio_telemetry_tracker_drone_gcs.services.simulator_service import SimulatorService
 from radio_telemetry_tracker_drone_gcs.services.tile_service import TileService
+
+logger = logging.getLogger(__name__)
 
 
 class CommunicationBridge(QObject):
@@ -79,6 +82,10 @@ class CommunicationBridge(QObject):
     gps_data_updated = pyqtSignal(QVariant)
     frequency_data_updated = pyqtSignal(QVariant)
 
+    # Simulator
+    simulator_started = pyqtSignal()
+    simulator_stopped = pyqtSignal()
+
     def __init__(self) -> None:
         """Initialize the communication bridge with data manager and services."""
         super().__init__()
@@ -104,23 +111,51 @@ class CommunicationBridge(QObject):
         self._stop_response_received: bool = False
         self._disconnect_response_received: bool = False
 
+        # Simulator
+        self._simulator_service: SimulatorService | None = None
+
     def _setup_state_handlers(self) -> None:
         """Set up state machine handlers."""
+        # Radio config handlers
         self._state_machine.register_transition_handler(
-            DroneState.CONNECTING,
+            DroneState.RADIO_CONFIG_WAITING,
             lambda: self._comms_service.register_sync_response_handler(self._on_sync_response, once=True),
         )
+
+        # Ping finder config handlers
         self._state_machine.register_transition_handler(
-            DroneState.CONFIGURING,
+            DroneState.PING_FINDER_CONFIG_WAITING,
             lambda: self._comms_service.register_config_response_handler(self._on_config_response, once=True),
         )
+
+        # Start handlers
         self._state_machine.register_transition_handler(
-            DroneState.READY,
+            DroneState.START_WAITING,
             lambda: self._comms_service.register_start_response_handler(self._on_start_response, once=True),
         )
+
+        # Stop handlers
         self._state_machine.register_transition_handler(
-            DroneState.RUNNING,
+            DroneState.STOP_WAITING,
             lambda: self._comms_service.register_stop_response_handler(self._on_stop_response, once=True),
+        )
+
+        # Register timeout handlers
+        self._state_machine.register_timeout_handler(
+            DroneState.RADIO_CONFIG_WAITING,
+            lambda: self.sync_timeout.emit(),
+        )
+        self._state_machine.register_timeout_handler(
+            DroneState.PING_FINDER_CONFIG_WAITING,
+            lambda: self.config_timeout.emit(),
+        )
+        self._state_machine.register_timeout_handler(
+            DroneState.START_WAITING,
+            lambda: self.start_timeout.emit(),
+        )
+        self._state_machine.register_timeout_handler(
+            DroneState.STOP_WAITING,
+            lambda: self.stop_timeout.emit(),
         )
 
     # --------------------------------------------------------------------------
@@ -171,10 +206,10 @@ class CommunicationBridge(QObject):
 
             # Transition to connecting state
             self._state_machine.transition_to(
-                DroneState.CONNECTING,
+                DroneState.RADIO_CONFIG_WAITING,
                 StateTransition(
-                    from_state=DroneState.DISCONNECTED,
-                    to_state=DroneState.CONNECTING,
+                    from_state=DroneState.RADIO_CONFIG_INPUT,
+                    to_state=DroneState.RADIO_CONFIG_WAITING,
                     success_message="Drone connected successfully",
                     failure_message="Failed to connect to drone",
                 ),
@@ -346,18 +381,40 @@ class CommunicationBridge(QObject):
         self._drone_data_manager.update_gps(internal_gps)
 
     def _handle_ping_data(self, ping: PingData) -> None:
-        lat, lng = self._transform_coords(ping.easting, ping.northing, ping.epsg_code)
-        internal_ping = InternalPingData(
-            frequency=ping.frequency,
-            amplitude=ping.amplitude,
-            lat=lat,
-            long=lng,
-            timestamp=ping.timestamp,
-            packet_id=ping.packet_id,
-        )
-        self._drone_data_manager.add_ping(internal_ping)
+        """Handle ping data from drone."""
+        try:
+            # Validate ping data
+            if not all(
+                hasattr(ping, attr)
+                for attr in ["easting", "northing", "epsg_code", "frequency", "amplitude", "timestamp", "packet_id"]
+            ):
+                logger.error("Invalid ping data received: missing required attributes")
+                return
+
+            lat, lng = self._transform_coords(ping.easting, ping.northing, ping.epsg_code)
+            logger.info(
+                "Ping data received - Freq: %d Hz, Amplitude: %.2f dB, UTM: (%.2f, %.2f) -> LatLng: (%.6f, %.6f)",
+                ping.frequency,
+                ping.amplitude,
+                ping.easting,
+                ping.northing,
+                lat,
+                lng,
+            )
+            internal_ping = InternalPingData(
+                frequency=ping.frequency,
+                amplitude=ping.amplitude,
+                lat=lat,
+                long=lng,
+                timestamp=ping.timestamp,
+                packet_id=ping.packet_id,
+            )
+            self._drone_data_manager.add_ping(internal_ping)
+        except Exception:
+            logger.exception("Error handling ping data")
 
     def _handle_loc_est_data(self, loc_est: LocEstData) -> None:
+        """Handle location estimate data from drone."""
         lat, lng = self._transform_coords(loc_est.easting, loc_est.northing, loc_est.epsg_code)
         internal_loc_est = InternalLocEstData(
             frequency=loc_est.frequency,
@@ -365,6 +422,12 @@ class CommunicationBridge(QObject):
             long=lng,
             timestamp=loc_est.timestamp,
             packet_id=loc_est.packet_id,
+        )
+        logger.info(
+            "Location estimate received - Freq: %d Hz, Position: (%.6f, %.6f)",
+            loc_est.frequency,
+            lat,
+            lng,
         )
         self._drone_data_manager.update_loc_est(internal_loc_est)
 
@@ -536,19 +599,21 @@ class CommunicationBridge(QObject):
     # RESPONSES
     # --------------------------------------------------------------------------
     def _on_sync_response(self, rsp: SyncResponseData) -> None:
+        """Handle sync response from drone."""
         self._sync_response_received = True
 
         if not rsp.success:
-            logging.warning("Sync success=False => device not ready.")
-            self.sync_failure.emit("Warning: device not ready or initialization failed.")
+            logging.warning("Sync success=False => Undefined behavior")
+            self.sync_failure.emit("UNDEFINED BEHAVIOR: Sync failed.")
             self._state_machine.transition_to(DroneState.ERROR)
             return
 
+        self.sync_success.emit("Successfully connected to drone.")
         self._comms_service.register_gps_handler(self._handle_gps_data, once=False)
-        self.sync_success.emit("Drone connected successfully")
-        self._state_machine.transition_to(DroneState.CONFIGURING)
+        self._state_machine.transition_to(DroneState.PING_FINDER_CONFIG_INPUT)
 
     def _on_config_response(self, rsp: ConfigResponseData) -> None:
+        """Handle config response from drone."""
         self._config_response_received = True
 
         if not rsp.success:
@@ -558,9 +623,10 @@ class CommunicationBridge(QObject):
             return
 
         self.config_success.emit("Config sent to drone.")
-        self._state_machine.transition_to(DroneState.READY)
+        self._state_machine.transition_to(DroneState.START_INPUT)
 
     def _on_start_response(self, rsp: StartResponseData) -> None:
+        """Handle start response from drone."""
         self._start_response_received = True
 
         if not rsp.success:
@@ -572,9 +638,10 @@ class CommunicationBridge(QObject):
         self.start_success.emit("Drone is now starting.")
         self._comms_service.register_ping_handler(self._handle_ping_data, once=False)
         self._comms_service.register_loc_est_handler(self._handle_loc_est_data, once=False)
-        self._state_machine.transition_to(DroneState.RUNNING)
+        self._state_machine.transition_to(DroneState.STOP_INPUT)
 
     def _on_stop_response(self, rsp: StopResponseData) -> None:
+        """Handle stop response from drone."""
         self._stop_response_received = True
 
         if not rsp.success:
@@ -586,9 +653,10 @@ class CommunicationBridge(QObject):
         self.stop_success.emit("Drone is now stopping.")
         self._comms_service.unregister_ping_handler(self._handle_ping_data)
         self._comms_service.unregister_loc_est_handler(self._handle_loc_est_data)
-        self._state_machine.transition_to(DroneState.READY)
+        self._state_machine.transition_to(DroneState.PING_FINDER_CONFIG_INPUT)
 
     def _on_disconnect_response(self, rsp: StopResponseData) -> None:
+        """Handle disconnect response from drone."""
         self._disconnect_response_received = True
 
         if not rsp.success:
@@ -598,7 +666,9 @@ class CommunicationBridge(QObject):
             return
 
         self.disconnect_success.emit("Drone is now disconnected.")
+        self._comms_service.unregister_gps_handler(self._handle_gps_data)
         self._cleanup()
+        self._state_machine.transition_to(DroneState.RADIO_CONFIG_INPUT)
 
     # --------------------------------------------------------------------------
     # Ack callbacks from DroneComms
@@ -616,7 +686,7 @@ class CommunicationBridge(QObject):
         if self._comms_service:
             self._comms_service.stop()
             self._comms_service = None
-        self._state_machine.transition_to(DroneState.DISCONNECTED)
+        self._state_machine.transition_to(DroneState.RADIO_CONFIG_INPUT)
         self.disconnect_success.emit("Disconnected")
 
     def _transform_coords(self, easting: float, northing: float, epsg_code: int) -> tuple[float, float]:
@@ -635,3 +705,57 @@ class CommunicationBridge(QObject):
     def log_message(self, message: str) -> None:
         """Log a message from the frontend."""
         logging.info("Frontend log: %s", message)
+
+    # --------------------------------------------------------------------------
+    # SIMULATOR
+    # --------------------------------------------------------------------------
+    @pyqtSlot("QVariantMap", result=bool)
+    def init_simulator(self, config: dict[str, Any]) -> bool:
+        """Initialize the simulator with the given radio configuration.
+
+        Args:
+            config: Dictionary containing radio configuration settings.
+
+        Returns:
+            bool: True if initialization succeeded, False otherwise.
+        """
+        try:
+            # Create radio config for simulator (server mode)
+            radio_cfg = RadioConfig(
+                interface_type=config["interface_type"],
+                port=config["port"],
+                baudrate=int(config["baudrate"]),
+                host=config["host"],
+                tcp_port=int(config["tcp_port"]),
+                server_mode=True,  # Simulator acts as server
+            )
+
+            # Initialize simulator service
+            self._simulator_service = SimulatorService(radio_cfg)
+            self._simulator_service.start()
+            self.simulator_started.emit()
+        except Exception:
+            logging.exception("Error initializing simulator")
+            return False
+        else:
+            return True
+
+    @pyqtSlot(result=bool)
+    def cleanup_simulator(self) -> bool:
+        """Stop the simulator and clean up resources.
+
+        Returns:
+            bool: True if cleanup succeeded, False if simulator was not running.
+        """
+        if not self._simulator_service:
+            return False
+
+        try:
+            self._simulator_service.stop()
+            self._simulator_service = None
+            self.simulator_stopped.emit()
+        except Exception:
+            logging.exception("Error cleaning up simulator")
+            return False
+        else:
+            return True

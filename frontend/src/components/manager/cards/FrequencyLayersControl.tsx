@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { GlobalAppContext } from '../../../context/globalAppContextDef';
-import { EyeIcon, EyeSlashIcon, MapPinIcon, SignalIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { MapPinIcon, SignalIcon, TrashIcon } from '@heroicons/react/24/outline';
 import Card from '../../common/Card';
 
 const FrequencyLayersControl: React.FC = () => {
@@ -27,10 +27,20 @@ const FrequencyLayersControl: React.FC = () => {
                 };
             }
             
+            if (type === 'pings') {
+                return {
+                    ...layer,
+                    visible_pings: !layer.visible_pings,
+                    // Keep location estimate visibility unchanged
+                    visible_location_estimate: layer.visible_location_estimate
+                };
+            }
+            
+            // type === 'location'
             return {
                 ...layer,
-                visible_pings: type === 'pings' ? !layer.visible_pings : layer.visible_pings,
-                visible_location_estimate: type === 'location' ? !layer.visible_location_estimate : layer.visible_location_estimate
+                visible_pings: layer.visible_pings,
+                visible_location_estimate: !layer.visible_location_estimate
             };
         });
         setFrequencyVisibility(newVisibility);
@@ -44,11 +54,28 @@ const FrequencyLayersControl: React.FC = () => {
             return layer.visible_pings && layer.visible_location_estimate;
         });
 
-        const newVisibility = frequencyVisibility.map(layer => ({
-            ...layer,
-            visible_pings: type === 'location' ? layer.visible_pings : !allVisible,
-            visible_location_estimate: type === 'pings' ? layer.visible_location_estimate : !allVisible
-        }));
+        const newVisibility = frequencyVisibility.map(layer => {
+            if (type === 'both') {
+                return {
+                    ...layer,
+                    visible_pings: !allVisible,
+                    visible_location_estimate: !allVisible
+                };
+            }
+            if (type === 'pings') {
+                return {
+                    ...layer,
+                    visible_pings: !allVisible,
+                    visible_location_estimate: layer.visible_location_estimate
+                };
+            }
+            // type === 'location'
+            return {
+                ...layer,
+                visible_pings: layer.visible_pings,
+                visible_location_estimate: !allVisible
+            };
+        });
         setFrequencyVisibility(newVisibility);
     };
 
@@ -75,47 +102,35 @@ const FrequencyLayersControl: React.FC = () => {
         <Card title="Frequency Layers">
             <div className="space-y-4">
                 {/* Global Controls */}
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div className="text-sm font-medium text-gray-700">
-                        Show/Hide All
-                    </div>
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => toggleAllVisibility('pings')}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition-colors
-                                ${allPingsVisible 
-                                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                }`}
-                            title={`${allPingsVisible ? 'Hide' : 'Show'} all pings`}
-                        >
-                            <SignalIcon className="w-4 h-4" />
-                            <span className="text-sm">Pings</span>
-                        </button>
-                        <button
-                            onClick={() => toggleAllVisibility('location')}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition-colors
-                                ${allLocationsVisible 
-                                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                }`}
-                            title={`${allLocationsVisible ? 'Hide' : 'Show'} all location estimates`}
-                        >
-                            <MapPinIcon className="w-4 h-4" />
-                            <span className="text-sm">Locations</span>
-                        </button>
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">All Frequencies</span>
                         <button
                             onClick={() => toggleAllVisibility('both')}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition-colors
-                                ${allVisible 
-                                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                }`}
-                            title={`${allVisible ? 'Hide' : 'Show'} everything`}
+                            className="text-sm text-gray-600 hover:text-gray-900"
                         >
-                            {allVisible ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
-                            <span className="text-sm">All</span>
+                            {allVisible ? 'Hide All' : 'Show All'}
                         </button>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-600">Pings</span>
+                            <button
+                                onClick={() => toggleAllVisibility('pings')}
+                                className="text-xs text-gray-600 hover:text-gray-900"
+                            >
+                                {allPingsVisible ? 'Hide' : 'Show'}
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-600">Location Estimates</span>
+                            <button
+                                onClick={() => toggleAllVisibility('location')}
+                                className="text-xs text-gray-600 hover:text-gray-900"
+                            >
+                                {allLocationsVisible ? 'Hide' : 'Show'}
+                            </button>
+                        </div>
                     </div>
                 </div>
 

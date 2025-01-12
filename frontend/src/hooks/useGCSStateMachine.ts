@@ -101,7 +101,7 @@ export function useGCSStateMachine(backend: DroneBackend | null): GCSStateMachin
 
         backend.stop_success.connect((msg: string) => {
             if (gcsState === GCSState.STOP_WAITING || gcsState === GCSState.STOP_TIMEOUT) {
-                setGcsState(GCSState.RADIO_CONFIG_INPUT);
+                setGcsState(GCSState.PING_FINDER_CONFIG_INPUT);
                 setMessage(msg);
                 setMessageVisible(true);
                 setMessageType('success');

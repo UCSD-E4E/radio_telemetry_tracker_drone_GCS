@@ -28,6 +28,12 @@ export interface DroneBackend {
     cancel_connection(): void;
     disconnect(): void;
 
+    // Simulator
+    init_simulator(config: RadioConfig): Promise<boolean>;
+    cleanup_simulator(): Promise<boolean>;
+    simulator_started: Signal<void>;
+    simulator_stopped: Signal<void>;
+
     // Data signals
     gps_data_updated: Signal<GpsData>;
     frequency_data_updated: Signal<FrequencyData>;

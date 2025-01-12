@@ -13,21 +13,12 @@ const normalize = (value: number, min: number, max: number) => {
     return (value - min) / (max - min);
 };
 
-const fnv1a = (value: number): number => {
-    const str = value.toString();
-    let hash = 2166136261;
-    for (let i = 0; i < str.length; i++) {
-        hash ^= str.charCodeAt(i);
-        hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
-    }
-    return hash >>> 0;
-};
-
-// Get a consistent color for a frequency using improved hashing
+// Generate a distinct color based on frequency
 const getFrequencyColor = (frequency: number): string => {
-    const hash = fnv1a(frequency);
-    const hue = (hash * 0.618033988749895) % 1;
-    return `hsl(${Math.floor(hue * 360)}, 85%, 60%)`;
+    // Use golden ratio to generate well-distributed hues
+    const goldenRatio = 0.618033988749895;
+    const hue = ((frequency * goldenRatio) % 1) * 360;
+    return `hsl(${hue}, 70%, 45%)`; // Saturation and lightness fixed for good visibility
 };
 
 // Get color for amplitude (used for stroke color of pings)
@@ -36,85 +27,42 @@ const getAmplitudeColor = (normalizedValue: number) => {
     return `hsl(${hue}, 100%, 50%)`;
 };
 
-// Create a ping icon using SignalIcon with improved styling
+// Create a ping icon using SignalIcon
 const createPingIcon = (color: string, strokeColor: string, size: number): L.DivIcon => {
-    const iconSize = Math.max(12, Math.min(24, size));
     const iconHtml = `
-        <div class="relative" style="width: ${iconSize}px; height: ${iconSize}px;">
+        <div class="relative" style="width: ${size}px; height: ${size}px;">
             <div class="absolute inset-0 flex items-center justify-center">
-                <div class="ping-pulse absolute inset-0" style="
-                    background-color: ${color}40;
-                    border: 2px solid ${color}80;
-                    border-radius: 50%;
-                    animation: ping-pulse 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
-                "></div>
-                <svg class="w-full h-full relative z-10" viewBox="0 0 24 24" fill="${color}" stroke="${strokeColor}" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.808-3.808-9.98 0-13.789m13.788 0c3.808 3.808 3.808 9.981 0 13.79" />
+                <svg class="w-full h-full" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="8" fill="${color}" stroke="${strokeColor}" stroke-width="2"/>
                 </svg>
             </div>
         </div>
-        <style>
-            @keyframes ping-pulse {
-                75%, 100% {
-                    transform: scale(2);
-                    opacity: 0;
-                }
-            }
-            .ping-pulse {
-                transform-origin: center;
-            }
-        </style>
     `;
-    
+
     return L.divIcon({
         html: iconHtml,
-        className: 'ping-marker',
-        iconSize: [iconSize, iconSize],
-        iconAnchor: [iconSize/2, iconSize/2],
+        className: '',
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2],
     });
 };
 
-// Create a location estimate icon with improved styling
+// Create a location estimate icon 
 const createLocationEstimateIcon = (color: string): L.DivIcon => {
     const iconHtml = `
         <div class="relative" style="width: 32px; height: 32px;">
             <div class="absolute inset-0 flex items-center justify-center">
-                <div class="location-pulse absolute inset-0" style="
-                    background-color: ${color}40;
-                    border: 2px solid ${color}80;
-                    border-radius: 50%;
-                    animation: location-pulse 2s ease-out infinite;
-                "></div>
-                <svg class="w-full h-full relative z-10" viewBox="0 0 24 24" fill="white" stroke="${color}" stroke-width="2">
+                <svg class="w-full h-full" viewBox="0 0 24 24" fill="white" stroke="${color}" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
                     <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
                 </svg>
             </div>
         </div>
-        <style>
-            @keyframes location-pulse {
-                0% {
-                    transform: scale(0.95);
-                    opacity: 0.8;
-                }
-                50% {
-                    transform: scale(1.5);
-                    opacity: 0.4;
-                }
-                100% {
-                    transform: scale(0.95);
-                    opacity: 0.8;
-                }
-            }
-            .location-pulse {
-                transform-origin: center;
-            }
-        </style>
     `;
-    
+
     return L.divIcon({
         html: iconHtml,
-        className: 'location-estimate-marker',
+        className: '',
         iconSize: [32, 32],
         iconAnchor: [16, 32],
     });
@@ -152,25 +100,27 @@ const FrequencyLayer: React.FC<FrequencyLayerProps> = ({
     visible_location_estimate,
 }) => {
     const map = useMap();
-    const pingMarkersRef = useRef<L.Marker[]>([]);
+    const markersRef = useRef<L.Marker[]>([]);
     const locationMarkerRef = useRef<L.Marker | null>(null);
-    const frequencyColor = useMemo(() => getFrequencyColor(frequency), [frequency]);
-
     const cleanupMarkers = useCallback(() => {
-        pingMarkersRef.current.forEach(marker => marker.remove());
-        pingMarkersRef.current = [];
-        if (locationMarkerRef.current) {
-            locationMarkerRef.current.remove();
-            locationMarkerRef.current = null;
-        }
+        markersRef.current.forEach(marker => marker.remove());
+        markersRef.current = [];
     }, []);
 
-    useEffect(() => {
-        if (!map) return;
+    // Get a distinct color for this frequency
+    const frequencyColor = useMemo(() => getFrequencyColor(frequency), [frequency]);
 
+    // Effect for ping markers
+    useEffect(() => {
+        if (!map || !visible_pings) {
+            cleanupMarkers();
+            return;
+        }
+
+        // Clean up old markers
         cleanupMarkers();
 
-        if (visible_pings && pings.length > 0) {
+        if (pings.length > 0) {
             const amplitudes = pings.map(ping => ping.amplitude);
             const minAmplitude = Math.min(...amplitudes);
             const maxAmplitude = Math.max(...amplitudes);
@@ -194,33 +144,49 @@ const FrequencyLayer: React.FC<FrequencyLayerProps> = ({
                     offset: [0, -size/2]
                 });
 
-                pingMarkersRef.current.push(marker);
+                markersRef.current.push(marker);
             });
-        }
-
-        if (visible_location_estimate && locationEstimate) {
-            const icon = createLocationEstimateIcon(frequencyColor);
-            const marker = L.marker(
-                [locationEstimate.lat, locationEstimate.long],
-                { icon }
-            ).addTo(map);
-
-            marker.bindTooltip(`
-                <div class="p-2 font-mono text-sm">
-                    <div class="font-medium text-gray-900">Location Estimate</div>
-                    <div class="text-gray-600">Frequency: ${(frequency / 1_000_000).toFixed(3)} MHz</div>
-                    <div class="text-gray-600">Time: ${new Date(locationEstimate.timestamp / 1000).toLocaleTimeString()}</div>
-                </div>
-            `, { 
-                className: 'bg-white/95 border-0 shadow-lg rounded-lg',
-                offset: [0, -16]
-            });
-
-            locationMarkerRef.current = marker;
         }
 
         return cleanupMarkers;
-    }, [map, frequency, pings, locationEstimate, visible_pings, visible_location_estimate, cleanupMarkers, frequencyColor]);
+    }, [map, frequency, pings, visible_pings, cleanupMarkers, frequencyColor]);
+
+    // Separate effect for location estimate marker
+    useEffect(() => {
+        if (!map || !visible_location_estimate || !locationEstimate) {
+            if (locationMarkerRef.current) {
+                locationMarkerRef.current.remove();
+                locationMarkerRef.current = null;
+            }
+            return;
+        }
+
+        const icon = createLocationEstimateIcon(frequencyColor);
+        const marker = L.marker(
+            [locationEstimate.lat, locationEstimate.long],
+            { icon }
+        ).addTo(map);
+
+        marker.bindTooltip(`
+            <div class="p-2 font-mono text-sm">
+                <div class="font-medium text-gray-900">Location Estimate</div>
+                <div class="text-gray-600">Frequency: ${(frequency / 1_000_000).toFixed(3)} MHz</div>
+                <div class="text-gray-600">Time: ${new Date(locationEstimate.timestamp / 1000).toLocaleTimeString()}</div>
+            </div>
+        `, { 
+            className: 'bg-white/95 border-0 shadow-lg rounded-lg',
+            offset: [0, -16]
+        });
+
+        locationMarkerRef.current = marker;
+
+        return () => {
+            if (locationMarkerRef.current) {
+                locationMarkerRef.current.remove();
+                locationMarkerRef.current = null;
+            }
+        };
+    }, [map, frequency, locationEstimate, visible_location_estimate, frequencyColor]);
 
     return null;
 };
@@ -330,7 +296,7 @@ const DroneMarker: React.FC<{
                 droneMarkerRef.current = marker;
 
                 marker.bindTooltip('', {
-                    permanent: true,
+                    permanent: false,
                     direction: 'bottom',
                     offset: [0, 10],
                     className: 'bg-white/95 border-0 shadow-lg rounded px-2 py-1 text-sm'

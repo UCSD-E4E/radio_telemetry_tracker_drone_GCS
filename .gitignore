@@ -27,6 +27,7 @@ htmlcov/
 env/
 venv/
 ENV/
+ruff_cache/
 poetry.lock
 
 # Node/Frontend
@@ -58,3 +59,5 @@ build/
 *.log
 .DS_Store
 tiles.db
+tiles.db-shm
+tiles.db-wal

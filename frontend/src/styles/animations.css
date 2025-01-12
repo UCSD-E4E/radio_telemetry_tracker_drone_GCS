@@ -29,22 +29,6 @@
     }
 }
 
-.ping-pulse {
-    animation: pulse 2s ease-in-out infinite;
-}
-
-.location-pulse {
-    animation: pulse 3s ease-in-out infinite;
-}
-
-.ping-marker {
-    animation: glow 1.5s ease-in-out infinite;
-}
-
-.location-estimate-marker {
-    animation: glow 2s ease-in-out infinite;
-}
-
 .drone-marker {
     filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.5));
 }

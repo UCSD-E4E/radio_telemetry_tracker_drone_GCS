@@ -167,6 +167,10 @@ class DroneCommsService:
         """Register a callback to handle location estimation data packets from the drone."""
         self._comms.register_loc_est_handler(callback, once=once)
 
+    def unregister_loc_est_handler(self, callback: Callable[[LocEstData], None]) -> None:
+        """Unregister a callback to handle location estimation data packets from the drone."""
+        self._comms.unregister_loc_est_handler(callback)
+
     def register_error_handler(
         self,
         callback: Callable[[ErrorData], None],
