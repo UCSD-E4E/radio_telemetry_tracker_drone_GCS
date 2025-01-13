@@ -1,0 +1,47 @@
+[tool.poetry]
+name = "radio-telemetry-tracker-drone-gcs"
+version = "0.1.0"
+description = "Radio Telemetry Tracker Drone Ground Control Station"
+authors = ["Tyler Flar <tflar@ucsd.edu>"]
+readme = "README.md"
+packages = [
+    { include = "radio_telemetry_tracker_drone_gcs" },
+    { include = "scripts" },
+]
+
+[tool.poetry.dependencies]
+python = ">=3.13,<3.14"
+pyqt6 = "^6.8.0"
+pyqt6-webengine = "^6.8.0"
+requests = "^2.32.3"
+radio-telemetry-tracker-drone-comms-package = {git = "https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-comms-package.git"}
+werkzeug = "^3.1.3"
+pyproj = "^3.7.0"
+scipy = "^1.15.1"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.8.4"
+pytest = "^8.3.4"
+pyinstaller = "^6.11.1"
+pytest-qt = "^4.4.0"
+
+[tool.poetry.scripts]
+rtt-gcs-dev = "scripts.dev:main"
+rtt-gcs-build = "scripts.build:main"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["ALL"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--maxfail=5 --tb=short"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
