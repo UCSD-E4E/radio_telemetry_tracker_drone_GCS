@@ -116,8 +116,8 @@ jobs:
           tag_name: v${{ needs.check_release.outputs.version }}
           name: Release v${{ needs.check_release.outputs.version }}
           files: |
-            dist/RTT-GCS-windows-x64/rtt-gcs-windows.exe
-            dist/RTT-GCS-linux-x64/rtt-gcs-linux
+            dist/RTT-Drone-GCS-windows-x64/rtt-drone-gcs-windows.exe
+            dist/RTT-Drone-GCS-linux-x64/rtt-drone-gcs-linux
           draft: false
           prerelease: false
         env:
