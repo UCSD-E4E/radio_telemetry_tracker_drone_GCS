@@ -9,7 +9,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from radio_telemetry_tracker_drone_gcs.utils.paths import APP_NAME
 from scripts.utils import build_frontend
 
 logging.basicConfig(level=logging.INFO)
