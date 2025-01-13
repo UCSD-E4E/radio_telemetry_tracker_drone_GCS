@@ -35,7 +35,7 @@ The **GCS** complements the **FDS** software (which runs on the drone payload), 
 
 ## System Requirements
 
-- **Operating System**: Windows 10/11, Ubuntu 22.04+ (or similar), macOS 13+.
+- **Operating System**: Windows 10/11, Ubuntu 22.04+ (or similar).
 - **Memory**: 8 GB+ recommended.
 - **Python**: 3.13+ if building/running Python backend.
 - **Poetry**: 2.0+ if building/running Python backend.

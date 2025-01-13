@@ -34,16 +34,12 @@ jobs:
         include:
           - os: windows-latest
             build_os: windows
-            artifact_name: Radio Telemetry Tracker Drone Ground Control Station.exe
-            release_name: RTT-GCS-windows-x64.exe
+            artifact_name: rtt-gcs-windows.exe
+            release_name: RTT-GCS-windows-x64
           - os: ubuntu-latest
             build_os: linux
-            artifact_name: Radio Telemetry Tracker Drone Ground Control Station
+            artifact_name: rtt-gcs-linux
             release_name: RTT-GCS-linux-x64
-          - os: macos-latest
-            build_os: macos
-            artifact_name: Radio Telemetry Tracker Drone Ground Control Station
-            release_name: RTT-GCS-macos-x64
     
     runs-on: ${{ matrix.os }}
     
@@ -99,9 +95,8 @@ jobs:
           tag_name: v${{ needs.check_release.outputs.version }}
           name: Release v${{ needs.check_release.outputs.version }}
           files: |
-            dist/RTT-GCS-windows-x64.exe/Radio Telemetry Tracker Drone Ground Control Station.exe
-            dist/RTT-GCS-linux-x64/Radio Telemetry Tracker Drone Ground Control Station
-            dist/RTT-GCS-macos-x64/Radio Telemetry Tracker Drone Ground Control Station
+            dist/RTT-GCS-windows-x64/rtt-gcs-windows.exe
+            dist/RTT-GCS-linux-x64/rtt-gcs-linux
           draft: false
           prerelease: false
         env:
