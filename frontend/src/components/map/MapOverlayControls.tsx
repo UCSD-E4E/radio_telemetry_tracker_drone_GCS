@@ -109,14 +109,14 @@ const MapOverlayControls: React.FC = () => {
 
                 {/* Offline Toggle */}
                 <ControlButton
-                    label="Offline Mode"
+                    label="Online Mode"
                     description={tileInfo 
                         ? `${tileInfo.total_tiles} tiles cached (${tileInfo.total_size_mb.toFixed(1)} MB)`
-                        : "Download map tiles for offline use"
+                        : "Switch to offline mode to use cached map tiles"
                     }
                     onClick={() => setIsMapOfflineUser(!isMapOffline)}
                     icon={<CloudArrowDownIcon className="w-6 h-6" />}
-                    active={isMapOffline}
+                    active={!isMapOffline}
                 />
 
                 {/* POI */}

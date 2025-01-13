@@ -5,13 +5,14 @@ from __future__ import annotations
 import logging
 import sqlite3
 from contextlib import contextmanager
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+from radio_telemetry_tracker_drone_gcs.utils.paths import get_db_path
 
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-DB_PATH = Path(__file__).parent.parent.parent / "tiles.db"
+DB_PATH = get_db_path()
 
 # Coordinate boundaries
 MIN_LATITUDE = -90
@@ -45,6 +46,10 @@ def init_db() -> None:
             # Enable WAL mode for better concurrent access
             conn.execute("PRAGMA journal_mode=WAL")
 
+            # Drop existing table if it exists
+            conn.execute("DROP TABLE IF EXISTS pois")
+
+            # Create table with correct schema
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS pois (
                     name TEXT PRIMARY KEY,

@@ -72,3 +72,22 @@ class DroneDataManager(QObject):
         """Clear all frequency data."""
         self._frequency_data.clear()
         self._emit_frequency_data()
+
+    def has_frequency(self, frequency: int) -> bool:
+        """Check if data exists for a given frequency.
+
+        Args:
+            frequency: The frequency to check
+
+        Returns:
+            bool: True if frequency exists in data, False otherwise
+        """
+        return frequency in self._frequency_data
+
+    def get_frequencies(self) -> list[int]:
+        """Get list of frequencies with data.
+
+        Returns:
+            list[int]: List of frequencies
+        """
+        return list(self._frequency_data.keys())

@@ -7,6 +7,7 @@ import logging
 import subprocess
 from pathlib import Path
 
+from radio_telemetry_tracker_drone_gcs.utils.paths import APP_NAME
 from scripts.utils import build_frontend
 
 logger = logging.getLogger(__name__)
@@ -19,11 +20,13 @@ def main() -> None:
 
     cmd = [
         "pyinstaller",
-        "--name=RTT-GCS",
+        f"--name={APP_NAME}",
         "--windowed",
         "--onefile",
         "--add-data",
         f"{frontend_dir / 'dist'}:frontend/dist",
+        # Add hidden imports for path utilities
+        "--hidden-import=radio_telemetry_tracker_drone_gcs.utils.paths",
     ]
 
     # Optional: add an icon if you have one in assets/

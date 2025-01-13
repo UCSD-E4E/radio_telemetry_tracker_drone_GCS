@@ -12,7 +12,6 @@ from typing import Any
 
 import pyproj
 from PyQt6.QtCore import QObject, QTimer, QVariant, pyqtSignal, pyqtSlot
-
 from radio_telemetry_tracker_drone_comms_package import (
     ConfigRequestData,
     ConfigResponseData,
@@ -25,6 +24,7 @@ from radio_telemetry_tracker_drone_comms_package import (
     StopResponseData,
     SyncResponseData,
 )
+
 from radio_telemetry_tracker_drone_gcs.comms.drone_comms_service import DroneCommsService
 from radio_telemetry_tracker_drone_gcs.comms.state_machine import DroneState, DroneStateMachine, StateTransition
 from radio_telemetry_tracker_drone_gcs.data.drone_data_manager import DroneDataManager
@@ -234,7 +234,7 @@ class CommunicationBridge(QObject):
         if self._comms_service:
             self._comms_service.stop()
             self._comms_service = None
-            self._state_machine.transition_to(DroneState.DISCONNECTED)
+            self._state_machine.transition_to(DroneState.RADIO_CONFIG_INPUT)
 
     @pyqtSlot()
     def disconnect(self) -> None:

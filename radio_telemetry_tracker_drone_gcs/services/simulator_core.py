@@ -14,8 +14,6 @@ from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 import pyproj
-from scipy.optimize import least_squares
-
 from radio_telemetry_tracker_drone_comms_package import (
     ConfigRequestData,
     ConfigResponseData,
@@ -32,6 +30,7 @@ from radio_telemetry_tracker_drone_comms_package import (
     SyncRequestData,
     SyncResponseData,
 )
+from scipy.optimize import least_squares
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -92,8 +91,8 @@ class GpsDataGenerator:
         self.packet_id: int = 0
 
         # GPS noise parameters
-        self.position_noise_std: float = 1.0  # meters
-        self.altitude_noise_std: float = 0.5  # meters
+        self.position_noise_std: float = 0.3  # meters (typical GPS accuracy)
+        self.altitude_noise_std: float = 0.5  # meters (altitude is typically less accurate)
 
         # Thread control
         self._running: bool = False
@@ -730,6 +729,10 @@ class SimulatedPingFinder:
     SNR_THRESHOLD = -60  # dB
     MIN_DISTANCE = 1.0  # meters, avoid log(0)
     NOISE_STD = 2.0  # dB, standard deviation of noise
+    PING_INTERVAL = 1.0  # seconds
+    PING_JITTER = 0.1  # seconds
+    MAX_DETECTION_RANGE = 500.0  # meters, maximum range where detection is possible
+    BASE_DETECTION_PROB = 0.6  # base probability of detection at optimal range
 
     def __init__(self, gps_generator: GpsDataGenerator) -> None:
         """Initialize the simulated ping finder."""
@@ -744,11 +747,9 @@ class SimulatedPingFinder:
 
         # Ping timing parameters
         self._next_ping_times: dict[int, float] = {}  # freq -> next ping time
-        self._mean_ping_interval: float = 5  # seconds
-        self._ping_interval_std: float = 3  # seconds
 
     def _calculate_next_ping_time(self, current_time: float) -> float:
-        """Calculate the next ping time using a normal distribution.
+        """Calculate the next ping time with small jitter.
 
         Args:
             current_time: Current time in seconds
@@ -756,9 +757,29 @@ class SimulatedPingFinder:
         Returns:
             float: Next ping time in seconds
         """
-        # Generate interval from normal distribution, with minimum of 5 seconds
-        interval = max(5.0, self._rng.gauss(self._mean_ping_interval, self._ping_interval_std))
-        return current_time + interval
+        jitter = self._rng.uniform(-self.PING_JITTER, self.PING_JITTER)
+        return current_time + self.PING_INTERVAL + jitter
+
+    def _calculate_detection_probability(self, distance: float) -> float:
+        """Calculate probability of detection based on distance.
+
+        Uses a sigmoid-like function that gives higher probability when closer
+        to the transmitter and drops off as distance increases.
+
+        Args:
+            distance: Distance to transmitter in meters
+
+        Returns:
+            float: Probability of detection between 0 and 1
+        """
+        if distance > self.MAX_DETECTION_RANGE:
+            return 0.0
+
+        # Scale distance to be between 0 and 1
+        scaled_dist = distance / self.MAX_DETECTION_RANGE
+        # Use sigmoid-like function to calculate probability
+        prob = self.BASE_DETECTION_PROB * (1 - scaled_dist**2)
+        return max(0.0, min(1.0, prob))
 
     def _distance_to_receive_power(self, distance: float, k: float, order: float) -> float:
         """Calculate received power based on distance.
@@ -797,8 +818,8 @@ class SimulatedPingFinder:
             order: Path loss order (typically 2-4)
         """
         self._transmitters[frequency] = (*position, power, order)
-        # Initialize next ping time for this frequency
-        self._next_ping_times[frequency] = self._calculate_next_ping_time(time.time())
+        # Initialize next ping time for this frequency with random offset
+        self._next_ping_times[frequency] = time.time() + self._rng.uniform(0, self.PING_INTERVAL)
 
     def _should_ping(self, frequency: int) -> bool:
         """Determine if a ping should occur based on timing.
@@ -819,7 +840,7 @@ class SimulatedPingFinder:
         return False
 
     def _simulate_ping(self, frequency: int, drone_pos: WayPoint) -> tuple[float, bool]:
-        """Simulate ping detection for a transmitter.
+        """Simulate ping detection with realistic signal propagation.
 
         Args:
             frequency: Transmitter frequency
@@ -829,19 +850,26 @@ class SimulatedPingFinder:
             tuple[float, bool]: (received power in dB, whether ping was detected)
         """
         if frequency not in self._transmitters:
-            return 0.0, False
+            return -float("inf"), False
 
         # Check if it's time for a ping
         if not self._should_ping(frequency):
-            return 0.0, False
+            return -float("inf"), False
 
         tx_x, tx_y, tx_z, power, order = self._transmitters[frequency]
 
-        # Calculate distance to transmitter
+        # Calculate 3D distance to transmitter
         dx = tx_x - drone_pos.easting
         dy = tx_y - drone_pos.northing
         dz = tx_z - drone_pos.altitude
         distance = np.sqrt(dx * dx + dy * dy + dz * dz)
+
+        # Calculate detection probability based on distance
+        detection_prob = self._calculate_detection_probability(distance)
+
+        # Random chance to miss the ping based on distance-based probability
+        if self._rng.random() > detection_prob:
+            return -float("inf"), False
 
         # Calculate received power with some noise
         received_power = self._distance_to_receive_power(distance, power, order)
@@ -866,7 +894,7 @@ class SimulatedPingFinder:
                         self._callback(now, power, freq)
 
                 # Sleep for a short time to check for pings
-                time.sleep(0.5)  # Check every half second
+                time.sleep(0.1)  # Check more frequently for better timing accuracy
         except Exception:
             logger.exception("Error in ping simulation loop")
 

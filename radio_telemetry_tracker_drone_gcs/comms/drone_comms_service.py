@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Callable
 
 from radio_telemetry_tracker_drone_comms_package import (
@@ -51,33 +50,29 @@ class DroneCommsService:
             ack_timeout=ack_timeout,
             max_retries=max_retries,
             on_ack_success=on_ack_success,
-            on_ack_callback=on_ack_timeout,
+            on_ack_timeout=on_ack_timeout,
         )
         self._started = False
 
     def start(self) -> None:
-        """Start the drone communications service if not already running."""
-        if self._started:
-            return
-        try:
+        """Start the drone communications service."""
+        if not self._started:
             self._comms.start()
             self._started = True
-            logging.info("DroneCommsService started.")
-        except Exception:
-            logging.exception("Error starting DroneCommsService")
-            raise
 
     def stop(self) -> None:
-        """Stop the drone communications service and clean up resources."""
-        if not self._started:
-            logging.debug("DroneCommsService never started, skip stop.")
-            return
-        try:
+        """Stop the drone communications service."""
+        if self._started:
             self._comms.stop()
-        except RuntimeError:
-            logging.debug("DroneComms thread not running or already stopped.")
-        self._started = False
-        logging.info("DroneCommsService stopped.")
+            self._started = False
+
+    def is_started(self) -> bool:
+        """Check if the service is started.
+
+        Returns:
+            bool: True if started, False otherwise
+        """
+        return self._started
 
     # Registration for packet handlers
     def register_sync_response_handler(

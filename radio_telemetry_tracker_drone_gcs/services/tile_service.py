@@ -62,18 +62,29 @@ class TileService:
         return rows >= 0
 
     def get_tile(self, z: int, x: int, y: int, source_id: str, *, offline: bool) -> bytes | None:
-        """Retrieve tile from DB or fetch from internet if offline=False."""
-        # Check DB
-        existing = get_tile_db(z, x, y, source_id)
-        if existing:
-            return existing
+        """Retrieve tile from DB or fetch from internet if offline=False.
 
+        Args:
+            z: Zoom level
+            x: X coordinate
+            y: Y coordinate
+            source_id: Map source identifier
+            offline: Whether to only check the database
+
+        Returns:
+            bytes | None: Tile data if found, None otherwise
+        """
+        # Check DB first
+        tile_data = get_tile_db(z, x, y, source_id)
+        if tile_data is not None:
+            return tile_data
+
+        # If offline mode, don't fetch from internet
         if offline:
-            # offline mode => no fetch
             logging.info("Offline mode, tile missing from DB => none returned")
             return None
 
-        # fetch from net
+        # Fetch from internet
         tile_data = self._fetch_tile(z, x, y, source_id)
         if tile_data:
             store_tile_db(z, x, y, source_id, tile_data)

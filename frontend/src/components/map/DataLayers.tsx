@@ -136,7 +136,9 @@ const FrequencyLayer: React.FC<FrequencyLayerProps> = ({
                 marker.bindTooltip(`
                     <div class="p-2 font-mono text-sm">
                         <div class="font-medium text-gray-900">Frequency: ${(frequency / 1_000_000).toFixed(3)} MHz</div>
-                        <div class="text-gray-600">Amplitude: ${ping.amplitude.toFixed(2)}</div>
+                        <div class="text-gray-600">Amplitude: ${ping.amplitude.toFixed(2)} dB</div>
+                        <div class="text-gray-600">Lat: ${ping.lat.toFixed(6)}°</div>
+                        <div class="text-gray-600">Long: ${ping.long.toFixed(6)}°</div>
                         <div class="text-gray-600">Time: ${new Date(ping.timestamp / 1000).toLocaleTimeString()}</div>
                     </div>
                 `, { 
@@ -171,6 +173,8 @@ const FrequencyLayer: React.FC<FrequencyLayerProps> = ({
             <div class="p-2 font-mono text-sm">
                 <div class="font-medium text-gray-900">Location Estimate</div>
                 <div class="text-gray-600">Frequency: ${(frequency / 1_000_000).toFixed(3)} MHz</div>
+                <div class="text-gray-600">Lat: ${locationEstimate.lat.toFixed(6)}°</div>
+                <div class="text-gray-600">Long: ${locationEstimate.long.toFixed(6)}°</div>
                 <div class="text-gray-600">Time: ${new Date(locationEstimate.timestamp / 1000).toLocaleTimeString()}</div>
             </div>
         `, { 
@@ -201,15 +205,29 @@ const DroneMarker: React.FC<{
 
     const formatLastUpdate = useCallback((timestamp: number | undefined) => {
         try {
-            if (!timestamp) return 'Last update: unknown';
+            if (!timestamp) return 'Unknown';
             const date = new Date(timestamp);
-            if (!isValid(date)) return 'Last update: unknown';
-            return `Last update: ${formatDistanceToNow(date, { addSuffix: true, includeSeconds: true })}`;
+            if (!isValid(date)) return 'Unknown';
+            return formatDistanceToNow(date, { addSuffix: true, includeSeconds: true });
         } catch (err) {
             logToPython(`Error formatting timestamp: ${err}`);
-            return 'Last update: unknown';
+            return 'Unknown';
         }
     }, []);
+
+    const getTooltipContent = useCallback((data: GpsData | null, lastUpdate: number) => {
+        if (!data) return 'Drone disconnected';
+        return `
+            <div class="p-2 font-mono text-sm">
+                <div class="font-medium text-gray-900">Drone Status</div>
+                <div class="text-gray-600">Lat: ${data.lat.toFixed(6)}°</div>
+                <div class="text-gray-600">Long: ${data.long.toFixed(6)}°</div>
+                <div class="text-gray-600">Alt: ${data.altitude.toFixed(1)} m</div>
+                <div class="text-gray-600">Heading: ${data.heading.toFixed(1)}°</div>
+                <div class="text-gray-600">Last update: ${formatLastUpdate(lastUpdate)}</div>
+            </div>
+        `;
+    }, [formatLastUpdate]);
 
     const droneIconSvg = useMemo(() => `
         <div class="relative w-[32px] h-[32px]">
@@ -222,7 +240,6 @@ const DroneMarker: React.FC<{
                         viewBox="0 0 24 24" 
                         width="24" 
                         height="24" 
-                        fill="currentColor" 
                         class="drone-icon"
                     >
                         <path d="M12 2 L14 6 L10 6 L12 2 Z" />
@@ -231,39 +248,6 @@ const DroneMarker: React.FC<{
                 </div>
             </div>
         </div>
-        <style>
-            .drone-marker-active {
-                color: #2563eb;
-                filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.1));
-            }
-            .drone-marker-disconnected {
-                color: #9ca3af;
-            }
-            .drone-status-pulse {
-                position: absolute;
-                inset: 0;
-                border-radius: 50%;
-                transform-origin: center;
-            }
-            .drone-marker-active .drone-status-pulse {
-                background-color: rgba(37, 99, 235, 0.1);
-                border: 2px solid rgba(37, 99, 235, 0.2);
-                animation: drone-pulse 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-            }
-            .drone-marker-disconnected .drone-status-pulse {
-                background-color: rgba(156, 163, 175, 0.1);
-                border: 2px solid rgba(156, 163, 175, 0.2);
-            }
-            @keyframes drone-pulse {
-                75%, 100% {
-                    transform: scale(2);
-                    opacity: 0;
-                }
-            }
-            .drone-icon-container {
-                transform-origin: center;
-            }
-        </style>
     `, []);
 
     const drawDroneMarker = useCallback(
@@ -274,7 +258,7 @@ const DroneMarker: React.FC<{
                 if (droneMarkerRef.current) {
                     const icon = droneMarkerRef.current.getIcon();
                     if (icon instanceof L.DivIcon) {
-                        icon.options.html = `<div class="drone-marker-disconnected">${droneIconSvg}</div>`;
+                        icon.options.html = `<div class="drone-marker drone-marker-disconnected">${droneIconSvg}</div>`;
                         droneMarkerRef.current.setIcon(icon);
                     }
                 }
@@ -282,13 +266,12 @@ const DroneMarker: React.FC<{
             }
 
             const { lat, long, heading, timestamp } = data;
-            // Store timestamp in milliseconds (convert from microseconds)
             lastUpdateRef.current = timestamp / 1000;
 
             if (!droneMarkerRef.current) {
                 const icon = L.divIcon({
-                    className: 'drone-marker',
-                    html: `<div class="drone-marker-active">${droneIconSvg.replace('var(--rotation)', `${heading}deg`)}</div>`,
+                    className: '',
+                    html: `<div class="drone-marker drone-marker-active" style="--rotation: ${heading}deg">${droneIconSvg}</div>`,
                     iconSize: [32, 32],
                     iconAnchor: [16, 16],
                 });
@@ -301,25 +284,20 @@ const DroneMarker: React.FC<{
                     offset: [0, 10],
                     className: 'bg-white/95 border-0 shadow-lg rounded px-2 py-1 text-sm'
                 });
-                marker.setTooltipContent(formatLastUpdate(lastUpdateRef.current));
+                marker.setTooltipContent(getTooltipContent(data, lastUpdateRef.current));
             } else {
                 droneMarkerRef.current.setLatLng([lat, long]);
                 const icon = droneMarkerRef.current.getIcon();
                 if (icon instanceof L.DivIcon) {
-                    const iconHtml = icon.options.html;
-                    if (typeof iconHtml === 'string') {
-                        // Only update the rotation value in the style attribute
-                        const newHtml = iconHtml.replace(/rotate\([^)]+\)/, `rotate(${heading}deg)`);
-                        icon.options.html = newHtml;
-                        droneMarkerRef.current.setIcon(icon);
-                    }
+                    icon.options.html = `<div class="drone-marker drone-marker-active" style="--rotation: ${heading}deg">${droneIconSvg}</div>`;
+                    droneMarkerRef.current.setIcon(icon);
                 }
                 if (droneMarkerRef.current.getTooltip()) {
-                    droneMarkerRef.current.setTooltipContent(formatLastUpdate(lastUpdateRef.current));
+                    droneMarkerRef.current.setTooltipContent(getTooltipContent(data, lastUpdateRef.current));
                 }
             }
         },
-        [map, formatLastUpdate, droneIconSvg]
+        [map, getTooltipContent, droneIconSvg]
     );
 
     useEffect(() => {
@@ -327,7 +305,7 @@ const DroneMarker: React.FC<{
 
         const interval = window.setInterval(() => {
             if (droneMarkerRef.current?.getTooltip() && lastUpdateRef.current) {
-                droneMarkerRef.current.setTooltipContent(formatLastUpdate(lastUpdateRef.current));
+                droneMarkerRef.current.setTooltipContent(getTooltipContent(gpsData, lastUpdateRef.current));
             }
         }, 1000);
 
@@ -338,7 +316,7 @@ const DroneMarker: React.FC<{
                 droneMarkerRef.current = null;
             }
         };
-    }, [gpsData, isConnected, drawDroneMarker, formatLastUpdate]);
+    }, [gpsData, isConnected, drawDroneMarker, getTooltipContent]);
 
     return null;
 };

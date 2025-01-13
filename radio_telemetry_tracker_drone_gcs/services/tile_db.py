@@ -5,20 +5,23 @@ from __future__ import annotations
 import logging
 import sqlite3
 from contextlib import contextmanager
-from pathlib import Path
 from queue import Empty, Full, Queue
 from threading import Lock
 from typing import TYPE_CHECKING
 
+from radio_telemetry_tracker_drone_gcs.utils.paths import ensure_app_dir, get_db_path
+
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-DB_PATH = Path(__file__).parent.parent.parent / "tiles.db"
+ensure_app_dir()  # Ensure app directory exists
+DB_PATH = get_db_path()
 
 # Connection pool
 MAX_CONNECTIONS = 5
 _connection_pool: Queue[sqlite3.Connection] = Queue(maxsize=MAX_CONNECTIONS)
 _pool_lock = Lock()
+
 
 def _create_connection() -> sqlite3.Connection:
     """Create a new optimized database connection."""
@@ -29,6 +32,7 @@ def _create_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
+
 def _get_connection() -> sqlite3.Connection:
     """Get a connection from the pool or create a new one."""
     try:
@@ -36,12 +40,14 @@ def _get_connection() -> sqlite3.Connection:
     except Empty:
         return _create_connection()
 
+
 def _return_connection(conn: sqlite3.Connection) -> None:
     """Return a connection to the pool or close it if pool is full."""
     try:
         _connection_pool.put_nowait(conn)
     except Full:
         conn.close()
+
 
 @contextmanager
 def get_db_connection() -> Generator[sqlite3.Connection, None, None]:

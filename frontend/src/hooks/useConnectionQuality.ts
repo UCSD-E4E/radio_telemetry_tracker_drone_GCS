@@ -14,22 +14,22 @@ export function useConnectionQuality(gpsData: GpsData | null, isConnected: boole
     const [pingTime, setPingTime] = useState<number>(0);
     const [gpsFrequency, setGpsFrequency] = useState<number>(0);
     const lastPacketRef = useRef<{ timestamp: number, receivedAt: number } | null>(null);
-    const [packetIntervals, setPacketIntervals] = useState<number[]>([]);
+    const packetIntervalsRef = useRef<number[]>([]);
 
     const calculateConnectionQuality = (avgPingTime: number, avgFreq: number): 5 | 4 | 3 | 2 | 1 => {
-        const pingQuality = avgPingTime < 200 ? 5 :
-            avgPingTime < 500 ? 4 :
-            avgPingTime < 1000 ? 3 :
-            avgPingTime < 2000 ? 2 : 1;
+        const pingQuality = avgPingTime < 500 ? 5 :    // More lenient ping thresholds
+            avgPingTime < 1000 ? 4 :
+            avgPingTime < 2000 ? 3 :
+            avgPingTime < 3000 ? 2 : 1;
 
-        const freqQuality = avgFreq >= 1.0 ? 5 :
-            avgFreq >= 0.75 ? 4 :  // data every ~1.3s
-            avgFreq >= 0.5 ? 3 :   // data every 2s
-            avgFreq >= 0.25 ? 2 :  // data every 4s
-            1;                     // data slower than every 4s
+        const freqQuality = avgFreq >= 0.8 ? 5 :      // More lenient frequency thresholds
+            avgFreq >= 0.5 ? 4 :   // data every ~2s
+            avgFreq >= 0.25 ? 3 :  // data every 4s
+            avgFreq >= 0.1 ? 2 :   // data every 10s
+            1;                     // slower than every 10s
 
-        // Average the qualities but round down for safety
-        return Math.floor((pingQuality + freqQuality) / 2) as 5 | 4 | 3 | 2 | 1;
+        // Average the qualities but round up for more leniency
+        return Math.ceil((pingQuality + freqQuality) / 2) as 5 | 4 | 3 | 2 | 1;
     };
 
     // Reset state when disconnected
@@ -38,7 +38,7 @@ export function useConnectionQuality(gpsData: GpsData | null, isConnected: boole
             setConnectionQuality(0);
             setPingTime(0);
             setGpsFrequency(0);
-            setPacketIntervals([]);
+            packetIntervalsRef.current = [];
             lastPacketRef.current = null;
         }
     }, [isConnected]);
@@ -51,35 +51,34 @@ export function useConnectionQuality(gpsData: GpsData | null, isConnected: boole
         
         // Calculate ping time for this packet
         const currentPing = now - packetTimestamp;
-        setPingTime(currentPing);
 
         // Calculate packet interval and update frequency
         if (lastPacketRef.current) {
             const interval = packetTimestamp - lastPacketRef.current.timestamp;
             
-            setPacketIntervals(prev => {
-                const newIntervals = [...prev, interval];
-                if (newIntervals.length > WINDOW_SIZE) {
-                    newIntervals.shift();
-                }
-                return newIntervals;
-            });
-
-            if (packetIntervals.length > 0) {
-                // Calculate average interval in seconds
-                const avgInterval = packetIntervals.reduce((a, b) => a + b, 0) / packetIntervals.length / 1000;
-                // Frequency is 1/interval
-                const freq = avgInterval > 0 ? 1 / avgInterval : 0;
-                setGpsFrequency(freq);
+            const intervals = [...packetIntervalsRef.current, interval];
+            if (intervals.length > WINDOW_SIZE) {
+                intervals.shift();
             }
+            
+            // Calculate frequency using the latest intervals
+            const avgIntervalMs = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+            const freq = avgIntervalMs > 0 ? 1000 / avgIntervalMs : 0;
+            
+            packetIntervalsRef.current = intervals;
+            setGpsFrequency(freq);
+            
+            // Calculate quality using the latest values
+            const quality = calculateConnectionQuality(currentPing, freq);
+            setConnectionQuality(quality);
+            setPingTime(currentPing);
+        } else {
+            // First packet, just set ping time
+            setPingTime(currentPing);
         }
 
         lastPacketRef.current = { timestamp: packetTimestamp, receivedAt: now };
-
-        // Calculate connection quality
-        const quality = calculateConnectionQuality(currentPing, gpsFrequency);
-        setConnectionQuality(quality);
-    }, [gpsData, isConnected, gpsFrequency, packetIntervals]);
+    }, [gpsData, isConnected]);
 
     return { connectionQuality, pingTime, gpsFrequency };
 } 

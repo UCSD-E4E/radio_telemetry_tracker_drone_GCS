@@ -1,50 +1,67 @@
 @keyframes pulse {
     0% {
-        transform: scale(0.95);
-        opacity: 0.5;
+        transform: scale(1);
+        opacity: 0.4;
     }
 
     50% {
-        transform: scale(1.2);
-        opacity: 0.2;
+        transform: scale(1.5);
+        opacity: 0.1;
     }
 
     100% {
-        transform: scale(0.95);
-        opacity: 0.5;
+        transform: scale(1);
+        opacity: 0.4;
     }
 }
 
 @keyframes glow {
     0% {
-        filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.8));
+        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9));
     }
 
     50% {
-        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 1));
+        filter: drop-shadow(0 0 8px rgba(255, 255, 255, 1));
     }
 
     100% {
-        filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.8));
+        filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9));
     }
 }
 
 .drone-marker {
-    filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.5));
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.9));
+    animation: glow 2s ease-in-out infinite;
 }
 
 .drone-marker-active {
-    @apply text-blue-600;
+    @apply text-blue-500;
+    font-size: 32px;
 }
 
 .drone-marker-disconnected {
     @apply text-gray-400;
+    font-size: 32px;
 }
 
-.drone-marker-pulse {
-    @apply rounded-full bg-blue-500;
-    animation: pulse 2s ease-in-out infinite;
-    width: 32px;
-    height: 32px;
-    opacity: 0.3;
+.drone-status-pulse {
+    @apply absolute inset-0 rounded-full;
+    transform-origin: center;
+}
+
+.drone-marker-active .drone-status-pulse {
+    @apply bg-blue-500/20 border-4 border-blue-500/40;
+    animation: pulse 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.drone-marker-disconnected .drone-status-pulse {
+    @apply bg-gray-400/20 border-4 border-gray-400/40;
+}
+
+.drone-icon-container {
+    transform-origin: center;
+}
+
+.drone-icon {
+    @apply fill-current stroke-white stroke-1;
 }

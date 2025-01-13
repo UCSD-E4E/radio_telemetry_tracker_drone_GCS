@@ -58,6 +58,6 @@ build/
 # Misc
 *.log
 .DS_Store
-tiles.db
-tiles.db-shm
-tiles.db-wal
+*.db
+*.db-shm
+*.db-wal
