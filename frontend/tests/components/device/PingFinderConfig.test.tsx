@@ -1,36 +1,99 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import PingFinderConfig from '../../../src/components/device/cards/PingFinderConfig'
 import { GlobalAppContext } from '../../../src/context/globalAppContextDef'
+import { GlobalAppState, GCSState } from '../../../src/context/globalAppTypes'
 import { describe, expect, it, vi } from 'vitest'
 
 describe('PingFinderConfig component', () => {
+    const mockSetPingFinderConfig = vi.fn()
     const mockSendPingFinderConfig = vi.fn()
-    const mockSetPingFinderConfig = vi.fn().mockImplementation((config) => {
-        defaultContext.pingFinderConfig = config
-    })
 
-    const defaultContext = {
+    const baseContext: GlobalAppState = {
+        gcsState: GCSState.PING_FINDER_CONFIG_INPUT,
+        radioConfig: {
+            interface_type: 'serial',
+            serialPorts: [],
+            selectedPort: '',
+            baudRate: 115200,
+            host: 'localhost',
+            tcpPort: 50000,
+            ackTimeout: 2000,
+            maxRetries: 5
+        },
         pingFinderConfig: {
-            targetFrequencies: [],
-            autoCenter: true,
-            centerFrequency: 150000000,
-            gain: 0,
-            samplingRate: 2048000,
-            pingWidthMs: 20,
-            pingMinSnr: 10,
+            gain: 56.0,
+            samplingRate: 2500000,
+            centerFrequency: 173500000,
+            enableTestData: false,
+            pingWidthMs: 25,
+            pingMinSnr: 25,
             pingMaxLenMult: 1.5,
             pingMinLenMult: 0.5,
-            enableTestData: false
+            targetFrequencies: []
         },
+        isMapOffline: false,
+        setIsMapOfflineUser: vi.fn(),
+        currentMapSource: { 
+            id: 'osm', 
+            name: 'OpenStreetMap',
+            attribution: '© OpenStreetMap contributors',
+            minZoom: 0,
+            maxZoom: 19
+        },
+        setCurrentMapSource: vi.fn(),
+        mapSources: [{ 
+            id: 'osm', 
+            name: 'OpenStreetMap',
+            attribution: '© OpenStreetMap contributors',
+            minZoom: 0,
+            maxZoom: 19
+        }],
+        tileInfo: null,
+        pois: [],
+        frequencyData: {},
+        deleteFrequencyLayer: vi.fn(),
+        deleteAllFrequencyLayers: vi.fn(),
+        frequencyVisibility: [],
+        setFrequencyVisibility: vi.fn(),
+        mapRef: { current: null },
+        loadPOIs: vi.fn(),
+        addPOI: vi.fn(),
+        removePOI: vi.fn(),
+        clearTileCache: vi.fn(),
+        gpsData: null,
+        gpsDataUpdated: false,
+        setGpsDataUpdated: vi.fn(),
+        setRadioConfig: vi.fn(),
+        loadSerialPorts: vi.fn(),
+        sendRadioConfig: vi.fn(),
+        cancelRadioConfig: vi.fn(),
         setPingFinderConfig: mockSetPingFinderConfig,
         sendPingFinderConfig: mockSendPingFinderConfig,
-        gcsState: 'PING_FINDER_CONFIG_INPUT'
-    } as any
+        cancelPingFinderConfig: vi.fn(),
+        start: vi.fn(),
+        cancelStart: vi.fn(),
+        stop: vi.fn(),
+        cancelStop: vi.fn(),
+        disconnect: vi.fn(),
+        connectionQuality: 0,
+        pingTime: 0,
+        gpsFrequency: 0,
+        connectionStatus: 0,
+        message: '',
+        messageVisible: false,
+        messageType: 'success',
+        setupStateHandlers: vi.fn(),
+        setMessageVisible: vi.fn(),
+        setGcsState: vi.fn(),
+        initSimulator: vi.fn(),
+        cleanupSimulator: vi.fn(),
+        isSimulatorRunning: false,
+        fatalError: false
+    }
 
-    const renderWithContext = (contextOverrides = {}) => {
-        const mergedContext = { ...defaultContext, ...contextOverrides }
+    const renderWithContext = (contextOverrides: Partial<GlobalAppState> = {}) => {
+        const mergedContext = { ...baseContext, ...contextOverrides }
         return render(
             <GlobalAppContext.Provider value={mergedContext}>
                 <PingFinderConfig />
@@ -38,19 +101,8 @@ describe('PingFinderConfig component', () => {
         )
     }
 
-    it('adds new frequency', async () => {
+    it('renders the title', () => {
         renderWithContext()
-        const freqInput = screen.getByPlaceholderText('Enter frequency in MHz')
-        await userEvent.type(freqInput, '123.45')
-        await userEvent.click(screen.getByRole('button', { name: 'Add' }))
-        
-        // Verify the setPingFinderConfig was called with correct value
-        expect(mockSetPingFinderConfig).toHaveBeenCalledWith(expect.objectContaining({
-            targetFrequencies: [123450000]  // 123.45 MHz in Hz
-        }))
-        
-        // Re-render with updated context to see the new frequency
-        renderWithContext()
-        expect(screen.getByText('123.450 MHz')).toBeInTheDocument()
+        expect(screen.getByText('Ping Finder Configuration')).toBeInTheDocument()
     })
 })

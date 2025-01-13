@@ -11,7 +11,9 @@ interface MessageProps {
 const Message: React.FC<MessageProps> = ({ message, type }) => {
     const context = useContext(GlobalAppContext);
     if (!context) return null;
-    const { setMessageVisible } = context;
+    const { setMessageVisible, messageVisible } = context;
+
+    if (!messageVisible) return null;
 
     const styles = {
         error: {
@@ -33,7 +35,10 @@ const Message: React.FC<MessageProps> = ({ message, type }) => {
     const currentStyle = styles[type];
 
     return (
-        <div className={`relative overflow-hidden rounded-lg border ${currentStyle.border} ${currentStyle.backdrop}`}>
+        <div 
+            role="alert"
+            className={`relative overflow-hidden rounded-lg border ${currentStyle.border} ${currentStyle.backdrop}`}
+        >
             <div className={`relative z-10 p-4 ${currentStyle.bg}`}>
                 <div className="flex items-start gap-3">
                     {currentStyle.icon}
