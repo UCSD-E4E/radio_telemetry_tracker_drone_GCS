@@ -12,8 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       github.event.pull_request.merged == true &&
-      (startsWith(github.event.pull_request.head.ref, 'hotfix/v') ||
-       startsWith(github.event.pull_request.head.ref, 'release/v'))
+      (contains(github.event.pull_request.head.ref, 'hotfix/v') ||
+       contains(github.event.pull_request.head.ref, 'Hotfix/v') ||
+       contains(github.event.pull_request.head.ref, 'release/v') ||
+       contains(github.event.pull_request.head.ref, 'Release/v'))
     outputs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
@@ -32,13 +34,16 @@ jobs:
         include:
           - os: windows-latest
             build_os: windows
-            artifact: RTT-GCS-windows-x64.zip
+            artifact_name: Radio Telemetry Tracker Drone Ground Control Station.exe
+            release_name: RTT-GCS-windows-x64.exe
           - os: ubuntu-latest
             build_os: linux
-            artifact: RTT-GCS-linux-x64.zip
+            artifact_name: Radio Telemetry Tracker Drone Ground Control Station
+            release_name: RTT-GCS-linux-x64
           - os: macos-latest
             build_os: macos
-            artifact: RTT-GCS-macos-x64.zip
+            artifact_name: Radio Telemetry Tracker Drone Ground Control Station
+            release_name: RTT-GCS-macos-x64
     
     runs-on: ${{ matrix.os }}
     
@@ -75,8 +80,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}
+          name: ${{ matrix.release_name }}
+          path: dist/${{ matrix.artifact_name }}
 
   # Create release after all builds complete
   create_release:
@@ -94,9 +99,9 @@ jobs:
           tag_name: v${{ needs.check_release.outputs.version }}
           name: Release v${{ needs.check_release.outputs.version }}
           files: |
-            dist/RTT-GCS-windows-x64.zip/RTT-GCS-windows-x64.zip
-            dist/RTT-GCS-linux-x64.zip/RTT-GCS-linux-x64.zip
-            dist/RTT-GCS-macos-x64.zip/RTT-GCS-macos-x64.zip
+            dist/RTT-GCS-windows-x64.exe/Radio Telemetry Tracker Drone Ground Control Station.exe
+            dist/RTT-GCS-linux-x64/Radio Telemetry Tracker Drone Ground Control Station
+            dist/RTT-GCS-macos-x64/Radio Telemetry Tracker Drone Ground Control Station
           draft: false
           prerelease: false
         env:
