@@ -50,11 +50,7 @@ The **GCS** complements the **FDS** software (which runs on the drone payload), 
 
 ### Prebuilt Releases
 
-Precompiled executables are availabe under the [**Releases** tab](https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-gcs/releases). You will typically see three artifacts:
-
-- **Windows**: `RTT-GCS-windows-x64.zip`
-- **Linux**: `RTT-GCS-linux-x64.zip`
-- **macOS**: `RTT-GCS-macos-x64.zip`
+Precompiled executables are availabe under the [**Releases** tab](https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-gcs/releases). 
 
 Download the one for your platform, unzip it, and run the executable.
 
