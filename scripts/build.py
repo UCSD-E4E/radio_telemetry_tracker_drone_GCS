@@ -63,6 +63,8 @@ def main() -> None:
             f"{frontend_dir / 'dist'}{';' if args.os == 'windows' else ':'}frontend/dist",
             # Add hidden imports for path utilities
             "--hidden-import=radio_telemetry_tracker_drone_gcs.utils.paths",
+            # Add scipy hidden imports
+            "--hidden-import=scipy.special._cdflib",
         ]
 
         # Optional: add an icon if you have one in assets/
