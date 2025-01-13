@@ -9,11 +9,20 @@ import subprocess
 import sys
 from pathlib import Path
 
-from radio_telemetry_tracker_drone_gcs.utils.paths import APP_NAME
 from scripts.utils import build_frontend
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def get_executable_name(os_type: str) -> str:
+    """Get the executable name based on the OS."""
+    if os_type == "windows":
+        return "rtt-drone-gcs-windows.exe"
+    if os_type == "linux":
+        return "rtt-drone-gcs-linux"
+    msg = f"Unsupported OS: {os_type}"
+    raise ValueError(msg)
 
 
 def validate_main_script(root_dir: Path) -> Path:
@@ -35,7 +44,7 @@ def validate_output(dist_dir: Path) -> None:
 def main() -> None:
     """Build the executable using PyInstaller."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--os", choices=["windows", "linux", "macos"], required=True)
+    parser.add_argument("--os", choices=["windows", "linux"], required=True)
     args = parser.parse_args()
 
     try:
@@ -44,9 +53,10 @@ def main() -> None:
         frontend_dir = build_frontend()
         logger.info("Frontend build complete")
 
+        executable_name = get_executable_name(args.os)
         cmd = [
             "pyinstaller",
-            f"--name={APP_NAME}",
+            f"--name={executable_name}",
             "--windowed",
             "--onefile",
             "--add-data",

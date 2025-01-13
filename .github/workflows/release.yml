@@ -34,12 +34,12 @@ jobs:
         include:
           - os: windows-latest
             build_os: windows
-            artifact_name: rtt-gcs-windows.exe
-            release_name: RTT-GCS-windows-x64
+            artifact_name: rtt-drone-gcs-windows.exe
+            release_name: RTT-Drone-GCS-windows-x64
           - os: ubuntu-latest
             build_os: linux
-            artifact_name: rtt-gcs-linux
-            release_name: RTT-GCS-linux-x64
+            artifact_name: rtt-drone-gcs-linux
+            release_name: RTT-Drone-GCS-linux-x64
     
     runs-on: ${{ matrix.os }}
     
