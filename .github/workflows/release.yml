@@ -64,7 +64,10 @@ jobs:
 
       - name: Install Node.js dependencies  
         working-directory: frontend
-        run: npm ci
+        run: |
+          # Generate a fresh package-lock.json and install dependencies
+          npm install --package-lock-only
+          npm install
 
       - name: Build for ${{ matrix.os }}
         run: poetry run python scripts/build.py --os ${{ matrix.build_os }}

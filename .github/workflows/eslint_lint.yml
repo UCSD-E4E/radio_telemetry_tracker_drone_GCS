@@ -31,7 +31,10 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm ci
+        run: |
+          # Generate a fresh package-lock.json and install dependencies
+          npm install --package-lock-only
+          npm install
 
       - name: Run ESLint
         working-directory: frontend
