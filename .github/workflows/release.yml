@@ -52,6 +52,12 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Install Windows SDK
+        if: matrix.os == 'windows-latest'
+        run: |
+          # Install Windows 10 SDK with required components
+          choco install windows-sdk-10-version-2004-all
+
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
@@ -62,6 +68,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install poetry
           poetry install
+
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libpulse0 \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-keysyms1 \
+            libxcb-shape0 \
+            libxcb-xkb1 \
+            libxcb-render-util0 \
+            libxcb-image0
 
       - name: Install Node.js dependencies  
         working-directory: frontend
@@ -95,8 +116,8 @@ jobs:
           tag_name: v${{ needs.check_release.outputs.version }}
           name: Release v${{ needs.check_release.outputs.version }}
           files: |
-            dist/RTT-GCS-windows-x64/rtt-gcs-windows.exe
-            dist/RTT-GCS-linux-x64/rtt-gcs-linux
+            dist/RTT-Drone-GCS-windows-x64/rtt-drone-gcs-windows.exe
+            dist/RTT-Drone-GCS-linux-x64/rtt-drone-gcs-linux
           draft: false
           prerelease: false
         env:
