@@ -2,6 +2,7 @@
 
 import logging
 import platform
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -24,11 +25,14 @@ def validate_command(cmd: list[str]) -> bool:
 
 
 def build_frontend() -> Path:
-    """Build the frontend using npm.
+    """Build the frontend using npm and copy to package directory.
 
-    Returns the path to the frontend directory.
+    Returns:
+        Path: The path to the copied frontend dist directory
     """
     frontend_dir = Path(__file__).parent.parent / "frontend"
+    package_dist = Path(__file__).parent.parent / "radio_telemetry_tracker_drone_gcs" / "frontend_dist"
+
     logger.info("Building frontend in %s...", frontend_dir)
 
     # First install dependencies
@@ -63,5 +67,10 @@ def build_frontend() -> Path:
         msg = "Frontend build did not produce any output files"
         raise RuntimeError(msg)
 
-    logger.info("Frontend build complete! Files in dist directory: %s", list(dist_dir.iterdir()))
-    return frontend_dir
+    # Copy to package directory
+    if package_dist.exists():
+        shutil.rmtree(package_dist)
+    shutil.copytree(dist_dir, package_dist)
+
+    logger.info("Frontend build copied to package at: %s", package_dist)
+    return package_dist

@@ -9,6 +9,10 @@ packages = [
     { include = "scripts" },
 ]
 
+include = [
+    { path = "radio_telemetry_tracker_drone_gcs/frontend_dist/**/*", format = ["wheel"] }
+]
+
 [tool.poetry.dependencies]
 python = ">=3.13,<3.14"
 pyqt6 = "^6.8.0"

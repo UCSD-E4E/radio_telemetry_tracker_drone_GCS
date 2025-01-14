@@ -31,6 +31,7 @@ ruff_cache/
 poetry.lock
 
 # Node/Frontend
+radio_telemetry_tracker_drone_gcs/frontend_dist
 node_modules/
 frontend/dist/
 frontend/build/
