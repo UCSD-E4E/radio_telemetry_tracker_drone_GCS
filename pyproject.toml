@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "radio-telemetry-tracker-drone-gcs"
-version = "0.1.0"
+version = "0.1.1"
 description = "Radio Telemetry Tracker Drone Ground Control Station"
 authors = ["Tyler Flar <tflar@ucsd.edu>"]
 readme = "README.md"
