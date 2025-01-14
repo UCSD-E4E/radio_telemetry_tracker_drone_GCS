@@ -9,7 +9,7 @@
   - [Features](#features)
   - [System Requirements](#system-requirements)
   - [Download and Installation](#download-and-installation)
-    - [Prebuilt Releases](#prebuilt-releases)
+    - [Using pip (from GitHub)](#using-pip-from-github)
     - [Building from Source](#building-from-source)
     - [Hot-running the app](#hot-running-the-app)
   - [Troubleshooting](#troubleshooting)
@@ -48,11 +48,19 @@ The **GCS** complements the **FDS** software (which runs on the drone payload), 
 
 ## Download and Installation
 
-### Prebuilt Releases
+### Using pip (from GitHub)
 
-Precompiled executables are availabe under the [**Releases** tab](https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-gcs/releases). 
+Install directly from the latest GitHub release:
 
-Download the one for your platform, unzip it, and run the executable.
+```bash
+pip install https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-gcs/releases/latest/download/radio_telemetry_tracker_drone_gcs-latest.whl
+```
+
+After installation, you can run the application with:
+
+```bash
+rtt-drone-gcs
+```
 
 ### Building from Source
 
@@ -78,11 +86,10 @@ cd radio-telemetry-tracker-drone-gcs
     npm install
     ```
 
-3. **Build** the app:
+3. **Run** the app:
     ```bash
-    poetry run rtt-gcs-build
+    poetry run rtt-drone-gcs
     ```
-    This generates a `dist/` folder with the executable. Note that PyInstaller only builds for the current platform.
 
 ### Hot-running the app
 

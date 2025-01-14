@@ -49,9 +49,12 @@ class DroneCommsService:
             radio_config=radio_config,
             ack_timeout=ack_timeout,
             max_retries=max_retries,
-            on_ack_success=on_ack_success,
-            on_ack_timeout=on_ack_timeout,
         )
+        # Set callbacks after initialization
+        if on_ack_success:
+            self._comms.on_ack_success = on_ack_success
+        if on_ack_timeout:
+            self._comms.on_ack_timeout = on_ack_timeout
         self._started = False
 
     def start(self) -> None:
