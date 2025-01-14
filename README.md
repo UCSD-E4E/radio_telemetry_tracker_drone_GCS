@@ -53,7 +53,8 @@ The **GCS** complements the **FDS** software (which runs on the drone payload), 
 Install directly from the latest GitHub release:
 
 ```bash
-pip install https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-gcs/releases/latest/download/radio_telemetry_tracker_drone_gcs-latest.whl
+# Replace [version] with the version number you want to install
+pip install https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-gcs/releases/download/v[version]/radio_telemetry_tracker_drone_gcs-[version]-py3-none-any.whl
 ```
 
 After installation, you can run the application with:
