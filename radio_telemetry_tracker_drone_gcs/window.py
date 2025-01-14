@@ -50,7 +50,7 @@ class MainWindow(QMainWindow):
 
         self.resize(1280, 720)
 
-        dist_path = Path(__file__).parent.parent / "frontend" / "dist" / "index.html"
+        dist_path = Path(__file__).parent / "frontend_dist" / "index.html"
         if not dist_path.exists():
             logging.error("Frontend dist not found at %s", dist_path)
             msg = f"Frontend dist not found at {dist_path}"
